@@ -206,6 +206,14 @@
   </header>
 
   <div class="controls">
+    <div class="field" style="min-width: 140px;">
+      <label for="currency">Currency</label>
+      <select id="currency">
+        <option value="USD">$ &nbsp;USD</option>
+        <option value="EUR">€ &nbsp;EUR</option>
+      </select>
+    </div>
+    <div style="flex: 1"></div>
     <button class="btn primary" id="addBtn">+ Add stock</button>
     <button class="btn" id="resetBtn">Reset</button>
   </div>
@@ -213,16 +221,21 @@
   <div id="holdings"></div>
 
   <div class="controls" style="margin-top: 18px;">
-    <div class="field" style="min-width: 220px; flex: 1;">
+    <div class="field" id="usBracketField" style="min-width: 220px; flex: 1;">
       <label for="bracket">Your income tax bracket (auto-maps long-term rate)</label>
       <select id="bracket"></select>
     </div>
-    <div class="field">
+    <div class="field" id="termField">
       <label>Holding period</label>
       <div class="term-toggle" id="globalTerm">
         <button type="button" data-term="short">Sold &lt; 1 yr · Short-term</button>
         <button type="button" data-term="long">Held ≥ 1 yr · Long-term</button>
       </div>
+    </div>
+    <div id="deNote" style="display: none; flex: 1; font-size: 13px; color: var(--muted); line-height: 1.5;">
+      🇩🇪 <b style="color: var(--text)">German capital-gains tax: flat 26.375%</b>
+      &nbsp;(25% Abgeltungsteuer + 5.5% Soli) — applied to gains regardless of how long you held.
+      Excludes the €1,000 Sparer-Pauschbetrag allowance &amp; church tax.
     </div>
   </div>
 
@@ -253,9 +266,11 @@
     Tax figures are a simplified estimate of <b>U.S. federal capital gains</b> only: short-term gains (held &lt; 1 year)
     are taxed at your ordinary income bracket; long-term gains (held ≥ 1 year) use the 0% / 15% / 20% rate roughly mapped
     from your bracket. It does <b>not</b> include state taxes, the 3.8% Net Investment Income Tax, wash-sale rules,
-    cost-basis adjustments, deductions, or your actual marginal situation. Brackets are approximate and change yearly.
-    Markets are volatile and a target price is a hypothetical, not a prediction. Consult a licensed financial advisor or
-    CPA before making real decisions.
+    cost-basis adjustments, deductions, or your actual marginal situation. In <b>EUR mode</b> a flat
+    <b>German</b> rate of 26.375% (25% Abgeltungsteuer + 5.5% solidarity surcharge) is applied regardless of holding
+    period, and it ignores the €1,000 Sparer-Pauschbetrag allowance and church tax. Brackets and rates are approximate
+    and change. Markets are volatile and a target price is a hypothetical, not a prediction. Consult a licensed
+    financial advisor or tax professional before making real decisions.
   </p>
   <footer class="credit">Built for fun. Your numbers stay in your browser — nothing is uploaded.</footer>
 </div>
@@ -278,20 +293,50 @@
   ];
   const DEFAULT_BRACKET = 2; // 22%
 
-  const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
-  const usd0 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+  // Germany taxes stock gains at a flat 25% Abgeltungsteuer + 5.5% solidarity
+  // surcharge = 26.375%, regardless of holding period. Used in EUR mode.
+  const GERMAN_RATE = 0.26375;
+
+  // Currency-aware formatters, rebuilt whenever the currency changes. EUR uses
+  // European notation (1.234,56 €); USD uses $1,234.56.
+  let CF2, CF0;
+  function rebuildFmt() {
+    const loc = state.currency === "EUR" ? "de-DE" : "en-US";
+    CF2 = new Intl.NumberFormat(loc, { style: "currency", currency: state.currency, maximumFractionDigits: 2 });
+    CF0 = new Intl.NumberFormat(loc, { style: "currency", currency: state.currency, maximumFractionDigits: 0 });
+  }
+  const fmt = (n) => CF2.format(n);
+  const fmt0 = (n) => CF0.format(n);
   const pct = (n) => (isFinite(n) ? (n >= 0 ? "+" : "") + n.toFixed(1) + "%" : "—");
-  const money = (n) => (Math.abs(n) >= 100000 ? usd0.format(n) : usd.format(n));
+  const money = (n) => (Math.abs(n) >= 100000 ? CF0.format(n) : CF2.format(n));
+
+  // Parse a number from a possibly-European-formatted string. In EUR mode a
+  // comma is the decimal separator (21,94 -> 21.94) and periods are thousands
+  // (1.234,56 -> 1234.56). In USD mode commas are thousands (1,234.56).
+  function parseNum(str) {
+    if (str == null) return 0;
+    str = String(str).trim();
+    if (!str) return 0;
+    if (state.currency === "EUR") {
+      if (str.indexOf(",") >= 0) str = str.replace(/\./g, "").replace(",", ".");
+    } else {
+      str = str.replace(/,/g, "");
+    }
+    const n = parseFloat(str);
+    return isFinite(n) ? n : 0;
+  }
 
   // ---- state ----
   const LS = "wolf_state_v1";
   let state = load() || {
     theme: "dark",
     bracket: DEFAULT_BRACKET,
+    currency: "USD",
     term: "long", // GLOBAL holding period: "short" (< 1yr) or "long" (>= 1yr)
     holdings: [newHolding({ ticker: "", shares: "", cost: "", target: "" })],
   };
   if (state.term !== "short" && state.term !== "long") state.term = "long";
+  if (state.currency !== "EUR" && state.currency !== "USD") state.currency = "USD";
   let uid = Math.max(0, ...state.holdings.map((h) => h.id)) + 1;
 
   function newHolding(p) { return { id: p.id ?? 0, ticker: p.ticker ?? "", shares: p.shares ?? "", cost: p.cost ?? "", target: p.target ?? "", term: p.term ?? "long" }; }
@@ -321,16 +366,18 @@
 
   // ---- compute one holding ----
   function compute(h) {
-    const shares = parseFloat(h.shares) || 0;
-    const cost = parseFloat(h.cost) || 0;
-    const target = parseFloat(h.target) || 0;
+    const shares = parseNum(h.shares);
+    const cost = parseNum(h.cost);
+    const target = parseNum(h.target);
+    const isEUR = state.currency === "EUR";
     const b = BRACKETS[state.bracket] || BRACKETS[DEFAULT_BRACKET];
     const totalCost = shares * cost;
     const value = shares * target;
     const gain = value - totalCost;
     const taxable = Math.max(0, gain);
-    const stTax = taxable * b.rate;
-    const ltTax = taxable * b.lt;
+    // EUR mode = German flat Abgeltungsteuer (holding period irrelevant).
+    const stTax = isEUR ? taxable * GERMAN_RATE : taxable * b.rate;
+    const ltTax = isEUR ? taxable * GERMAN_RATE : taxable * b.lt;
     return {
       shares, cost, target, totalCost, value, gain,
       gainPct: totalCost > 0 ? (gain / totalCost) * 100 : 0,
@@ -355,11 +402,11 @@
         <div class="field"><label>Ticker</label>
           <input type="text" class="ticker-input" data-f="ticker" placeholder="AAPL" maxlength="8" value="${esc(h.ticker)}"></div>
         <div class="field"><label>Shares</label>
-          <input type="number" data-f="shares" placeholder="100" step="any" min="0" value="${esc(h.shares)}"></div>
+          <input type="text" inputmode="decimal" autocomplete="off" data-f="shares" placeholder="100" value="${esc(h.shares)}"></div>
         <div class="field"><label>Avg cost / share</label>
-          <input type="number" data-f="cost" placeholder="0.00" step="any" min="0" value="${esc(h.cost)}"></div>
+          <input type="text" inputmode="decimal" autocomplete="off" data-f="cost" placeholder="0.00" value="${esc(h.cost)}"></div>
         <div class="field"><label>Target price</label>
-          <input type="number" data-f="target" placeholder="0.00" step="any" min="0" value="${esc(h.target)}"></div>
+          <input type="text" inputmode="decimal" autocomplete="off" data-f="target" placeholder="0.00" value="${esc(h.target)}"></div>
         <button class="icon-btn" data-act="remove" title="Remove">✕</button>
       </div>
       <div class="outs">
@@ -388,10 +435,17 @@
     set("value", money(c.value));
     set("gain", money(c.gain), c.gain >= 0 ? "pos" : "negv");
     set("gainpct", c.totalCost > 0 ? pct(c.gainPct) : "—", c.gain >= 0 ? "pos" : "negv");
-    // Single tax + after-tax chip driven by the GLOBAL holding-period toggle.
-    const isShort = state.term === "short";
-    const rate = isShort ? b.rate : b.lt;
-    set("taxlbl", `Est. tax · ${isShort ? "ST" : "LT"} ${Math.round(rate * 100)}%`);
+    // Single tax + after-tax chip. EUR = German flat rate; USD = bracket rate
+    // for the globally-selected holding period.
+    let taxLbl;
+    if (state.currency === "EUR") {
+      taxLbl = "Est. tax · DE 26.375%";
+    } else {
+      const isShort = state.term === "short";
+      const rate = isShort ? b.rate : b.lt;
+      taxLbl = `Est. tax · ${isShort ? "ST" : "LT"} ${Math.round(rate * 100)}%`;
+    }
+    set("taxlbl", taxLbl);
     set("tax", money(c.activeTax));
     set("net", money(c.activeNet));
   }
@@ -452,11 +506,29 @@
   const globalTermEl = $("globalTerm");
   function setTermUI() {
     globalTermEl.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.term === state.term));
-    $("sumTaxLbl").textContent = "Est. tax · " + (state.term === "short" ? "short-term" : "long-term");
+    $("sumTaxLbl").textContent = state.currency === "EUR"
+      ? "Est. tax · German 26.375%"
+      : "Est. tax · " + (state.term === "short" ? "short-term" : "long-term");
   }
   globalTermEl.addEventListener("click", (e) => {
     const t = e.target.dataset.term; if (!t) return;
     state.term = t; setTermUI(); recompute();
+  });
+
+  // ---- currency ----
+  const currencyEl = $("currency");
+  function applyCurrencyUI() {
+    const eur = state.currency === "EUR";
+    // German flat tax in EUR mode → hide the US bracket + holding controls,
+    // show the German rate note instead (holding period is irrelevant there).
+    $("usBracketField").style.display = eur ? "none" : "";
+    $("termField").style.display = eur ? "none" : "";
+    $("deNote").style.display = eur ? "" : "none";
+    setTermUI();
+  }
+  currencyEl.addEventListener("change", () => {
+    state.currency = currencyEl.value;
+    rebuildFmt(); applyCurrencyUI(); recompute();
   });
 
   // ---- charts ----
@@ -484,10 +556,10 @@
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { labels: { color: t.text, boxWidth: 12, font: { size: 11 } } },
-          tooltip: { callbacks: { label: (c) => c.dataset.label + ": " + usd.format(c.parsed.y) } } },
+          tooltip: { callbacks: { label: (c) => c.dataset.label + ": " + fmt(c.parsed.y) } } },
         scales: {
           x: { ticks: { color: t.text, font: { size: 11 } }, grid: { display: false } },
-          y: { ticks: { color: t.text, font: { size: 11 }, callback: (v) => usd0.format(v) }, grid: { color: t.grid } },
+          y: { ticks: { color: t.text, font: { size: 11 }, callback: (v) => fmt0(v) }, grid: { color: t.grid } },
         },
       },
     });
@@ -498,7 +570,7 @@
       options: {
         responsive: true, maintainAspectRatio: false, cutout: "62%",
         plugins: { legend: { position: "bottom", labels: { color: t.text, boxWidth: 12, font: { size: 11 }, padding: 12 } },
-          tooltip: { callbacks: { label: (c) => c.label + ": " + usd.format(c.parsed) } } },
+          tooltip: { callbacks: { label: (c) => c.label + ": " + fmt(c.parsed) } } },
       },
     });
   }
@@ -534,8 +606,10 @@
 
   // ---- boot ----
   applyTheme();
+  rebuildFmt();
+  currencyEl.value = state.currency;
   bracketEl.value = state.bracket;
-  setTermUI();
+  applyCurrencyUI();
   renderRows();
   initCharts();
   recompute();
