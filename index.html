@@ -343,20 +343,23 @@
   // Placeholder decimal sample that matches the selected notation (0,00 / 0.00).
   const decPlaceholder = () => (state.format === "EU" ? "0,00" : "0.00");
 
-  // Parse a number — the LAST comma/period is the decimal point; everything
-  // before it is thousands grouping. Works for both "0,8791" -> 0.8791 and
-  // "1,234.56" / "1.234,56" -> 1234.56, regardless of the format setting.
+  // Parse a number per the selected NOTATION:
+  //   EU: comma = decimal, period/space = thousands ("1.234,56" -> 1234.56)
+  //   US: comma/space = thousands, period = decimal ("1,234.56" -> 1234.56)
   function parseNum(str) {
     if (str == null) return 0;
     str = String(str).trim();
     if (!str) return 0;
-    const lastSep = Math.max(str.lastIndexOf(","), str.lastIndexOf("."));
     let out;
-    if (lastSep === -1) {
-      out = str.replace(/[^0-9eE+-]/g, "");
+    if (state.format === "EU") {
+      out = str.replace(/[.\s]/g, "").replace(/,/g, ".");
     } else {
-      out = str.slice(0, lastSep).replace(/[^0-9-]/g, "") + "." + str.slice(lastSep + 1).replace(/[^0-9]/g, "");
+      out = str.replace(/[,\s]/g, "");
     }
+    out = out.replace(/[^0-9.+-]/g, "");
+    // Keep only the first decimal point (defensive against stray separators).
+    const i = out.indexOf(".");
+    if (i !== -1) out = out.slice(0, i + 1) + out.slice(i + 1).replace(/\./g, "");
     const n = parseFloat(out);
     return isFinite(n) ? n : 0;
   }
