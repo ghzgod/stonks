@@ -206,11 +206,18 @@
   </header>
 
   <div class="controls">
-    <div class="field" style="min-width: 140px;">
+    <div class="field" style="min-width: 130px;">
       <label for="currency">Currency</label>
       <select id="currency">
         <option value="USD">$ &nbsp;USD</option>
         <option value="EUR">€ &nbsp;EUR</option>
+      </select>
+    </div>
+    <div class="field" style="min-width: 150px;">
+      <label for="format">Number format</label>
+      <select id="format">
+        <option value="US">US &nbsp;1,234.56</option>
+        <option value="EU">EU &nbsp;1.234,56</option>
       </select>
     </div>
     <div style="flex: 1"></div>
@@ -235,7 +242,8 @@
     <div id="deNote" style="display: none; flex: 1; font-size: 13px; color: var(--muted); line-height: 1.5;">
       🇩🇪 <b style="color: var(--text)">German capital-gains tax: flat 26.375%</b>
       &nbsp;(25% Abgeltungsteuer + 5.5% Soli) — applied to gains regardless of how long you held.
-      Excludes the €1,000 Sparer-Pauschbetrag allowance &amp; church tax.
+      Amounts converted to € at today's rate <b id="fxNote" style="color: var(--text)"></b>.
+      Excludes the €1,000 Sparer-Pauschbetrag allowance.
     </div>
   </div>
 
@@ -268,7 +276,7 @@
     from your bracket. It does <b>not</b> include state taxes, the 3.8% Net Investment Income Tax, wash-sale rules,
     cost-basis adjustments, deductions, or your actual marginal situation. In <b>EUR mode</b> a flat
     <b>German</b> rate of 26.375% (25% Abgeltungsteuer + 5.5% solidarity surcharge) is applied regardless of holding
-    period, and it ignores the €1,000 Sparer-Pauschbetrag allowance and church tax. Brackets and rates are approximate
+    period, and it ignores the €1,000 Sparer-Pauschbetrag allowance. Brackets and rates are approximate
     and change. Markets are volatile and a target price is a hypothetical, not a prediction. Consult a licensed
     financial advisor or tax professional before making real decisions.
   </p>
@@ -297,21 +305,45 @@
   // surcharge = 26.375%, regardless of holding period. Used in EUR mode.
   const GERMAN_RATE = 0.26375;
 
-  // Always render numbers in European notation — comma for the decimal,
-  // period for thousands (e.g. $3.543,45 / €3.543,45) — keeping the selected
-  // currency's symbol. rebuildFmt is kept as a no-op for call-site compat.
-  function rebuildFmt() {}
-  const EU = (n, d) => new Intl.NumberFormat("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d }).format(n);
-  const symOf = () => (state.currency === "EUR" ? "€" : "$");
-  const fmt = (n) => (n == null || !isFinite(n) ? "—" : symOf() + EU(n, 2));
-  const fmt0 = (n) => (n == null || !isFinite(n) ? "—" : symOf() + EU(n, 0));
-  const pct = (n) => (isFinite(n) ? (n >= 0 ? "+" : "") + n.toFixed(1).replace(".", ",") + "%" : "—");
-  const money = (n) => (Math.abs(n) >= 100000 ? fmt0(n) : fmt(n));
+  // Today's USD->EUR rate, fetched live (Frankfurter). Fallback until it loads.
+  let fxUsdToEur = 0.92;
 
-  // Parse a number where a COMMA is the decimal separator (European). The last
-  // comma or period in the string is treated as the decimal point; all other
-  // separators are stripped. So "0,8791" -> 0.8791, "1.234,56" -> 1234.56,
-  // "1,234.56" -> 1234.56, "4031" -> 4031 all parse correctly.
+  // Two independent controls:
+  //  - state.currency: which SYMBOL ($ / €)
+  //  - state.format:   number NOTATION ("US" = 1,234.56 / "EU" = 1.234,56)
+  // "Euro mode" = EITHER one set to Euro. In Euro mode we apply the flat German
+  // capital-gains tax AND convert amounts to EUR at today's exchange rate.
+  const euroMode = () => state.currency === "EUR" || state.format === "EU";
+  const notationLoc = () => (state.format === "EU" ? "de-DE" : "en-US");
+  const symOf = () => (euroMode() ? "€" : "$");
+  function numFmt(n, d) {
+    return new Intl.NumberFormat(notationLoc(), { minimumFractionDigits: d, maximumFractionDigits: d }).format(n);
+  }
+  // Stat-chip money: converts USD -> EUR in euro mode, then formats with symbol.
+  function fmtMoney(n, d) {
+    if (n == null || !isFinite(n)) return "—";
+    const c = euroMode() ? n * fxUsdToEur : n;
+    return symOf() + numFmt(c, d);
+  }
+  const fmt = (n) => fmtMoney(n, 2);
+  const fmt0 = (n) => fmtMoney(n, 0);
+  const money = (n) => {
+    if (n == null || !isFinite(n)) return "—";
+    const c = euroMode() ? n * fxUsdToEur : n;
+    return symOf() + numFmt(c, Math.abs(c) >= 100000 ? 0 : 2);
+  };
+  const pct = (n) => (isFinite(n)
+    ? (n >= 0 ? "+" : "") + (state.format === "EU" ? n.toFixed(1).replace(".", ",") : n.toFixed(1)) + "%"
+    : "—");
+  // Chart values are pre-converted to the display currency in recompute(), so
+  // format them WITHOUT re-converting.
+  const fmtChart = (n) => (isFinite(n) ? symOf() + numFmt(n, 2) : "—");
+  const fmtChart0 = (n) => (isFinite(n) ? symOf() + numFmt(n, 0) : "—");
+  function rebuildFmt() {}  // no-op (call-site compat)
+
+  // Parse a number — the LAST comma/period is the decimal point; everything
+  // before it is thousands grouping. Works for both "0,8791" -> 0.8791 and
+  // "1,234.56" / "1.234,56" -> 1234.56, regardless of the format setting.
   function parseNum(str) {
     if (str == null) return 0;
     str = String(str).trim();
@@ -321,12 +353,20 @@
     if (lastSep === -1) {
       out = str.replace(/[^0-9eE+-]/g, "");
     } else {
-      const intPart = str.slice(0, lastSep).replace(/[^0-9-]/g, "");
-      const fracPart = str.slice(lastSep + 1).replace(/[^0-9]/g, "");
-      out = intPart + "." + fracPart;
+      out = str.slice(0, lastSep).replace(/[^0-9-]/g, "") + "." + str.slice(lastSep + 1).replace(/[^0-9]/g, "");
     }
     const n = parseFloat(out);
     return isFinite(n) ? n : 0;
+  }
+
+  async function loadFx() {
+    try {
+      const r = await fetch("https://api.frankfurter.dev/v1/latest?base=USD&symbols=EUR");
+      if (r.ok) {
+        const d = await r.json();
+        if (d && d.rates && d.rates.EUR) { fxUsdToEur = d.rates.EUR; recompute(); updateModeNote(); }
+      }
+    } catch { /* keep fallback */ }
   }
 
   // ---- state ----
@@ -335,11 +375,13 @@
     theme: "dark",
     bracket: DEFAULT_BRACKET,
     currency: "USD",
-    term: "long", // GLOBAL holding period: "short" (< 1yr) or "long" (>= 1yr)
+    format: "US",  // "US" (1,234.56) or "EU" (1.234,56) number notation
+    term: "long",  // GLOBAL holding period: "short" (< 1yr) or "long" (>= 1yr)
     holdings: [newHolding({ ticker: "", shares: "", cost: "", target: "" })],
   };
   if (state.term !== "short" && state.term !== "long") state.term = "long";
   if (state.currency !== "EUR" && state.currency !== "USD") state.currency = "USD";
+  if (state.format !== "EU" && state.format !== "US") state.format = "US";
   let uid = Math.max(0, ...state.holdings.map((h) => h.id)) + 1;
 
   function newHolding(p) { return { id: p.id ?? 0, ticker: p.ticker ?? "", shares: p.shares ?? "", cost: p.cost ?? "", target: p.target ?? "", term: p.term ?? "long" }; }
@@ -372,7 +414,7 @@
     const shares = parseNum(h.shares);
     const cost = parseNum(h.cost);
     const target = parseNum(h.target);
-    const isEUR = state.currency === "EUR";
+    const isEUR = euroMode();
     const b = BRACKETS[state.bracket] || BRACKETS[DEFAULT_BRACKET];
     const totalCost = shares * cost;
     const value = shares * target;
@@ -441,7 +483,7 @@
     // Single tax + after-tax chip. EUR = German flat rate; USD = bracket rate
     // for the globally-selected holding period.
     let taxLbl;
-    if (state.currency === "EUR") {
+    if (euroMode()) {
       taxLbl = "Est. tax · DE 26.375%";
     } else {
       const isShort = state.term === "short";
@@ -462,7 +504,10 @@
       const c = compute(h);
       tCost += c.totalCost; tValue += c.value; tTax += c.activeTax;
       const name = (h.ticker || "—").toUpperCase();
-      labels.push(name); costData.push(c.totalCost); valueData.push(c.value);
+      // Chart values are stored in the DISPLAY currency (converted in euro mode)
+      // so bars, axis, and tooltips all read consistently.
+      const k = euroMode() ? fxUsdToEur : 1;
+      labels.push(name); costData.push(c.totalCost * k); valueData.push(c.value * k);
     });
     const tGain = tValue - tCost;
     $("sumCost").textContent = money(tCost);
@@ -509,7 +554,7 @@
   const globalTermEl = $("globalTerm");
   function setTermUI() {
     globalTermEl.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.term === state.term));
-    $("sumTaxLbl").textContent = state.currency === "EUR"
+    $("sumTaxLbl").textContent = euroMode()
       ? "Est. tax · German 26.375%"
       : "Est. tax · " + (state.term === "short" ? "short-term" : "long-term");
   }
@@ -518,20 +563,28 @@
     state.term = t; setTermUI(); recompute();
   });
 
-  // ---- currency ----
+  // ---- currency + number format ----
   const currencyEl = $("currency");
-  function applyCurrencyUI() {
-    const eur = state.currency === "EUR";
-    // German flat tax in EUR mode → hide the US bracket + holding controls,
-    // show the German rate note instead (holding period is irrelevant there).
+  const formatEl = $("format");
+  function updateModeNote() {
+    const r = $("fxNote");
+    if (r) r.textContent = `(1 USD ≈ ${numFmt(fxUsdToEur, 4)} EUR)`;
+  }
+  function applyModeUI() {
+    const eur = euroMode();
+    // Euro mode (currency € OR EU format) → flat German tax, EUR conversion.
+    // Hide the US bracket + holding controls; show the German note instead.
     $("usBracketField").style.display = eur ? "none" : "";
     $("termField").style.display = eur ? "none" : "";
     $("deNote").style.display = eur ? "" : "none";
+    updateModeNote();
     setTermUI();
   }
   currencyEl.addEventListener("change", () => {
-    state.currency = currencyEl.value;
-    rebuildFmt(); applyCurrencyUI(); recompute();
+    state.currency = currencyEl.value; applyModeUI(); recompute();
+  });
+  formatEl.addEventListener("change", () => {
+    state.format = formatEl.value; applyModeUI(); recompute();
   });
 
   // ---- charts ----
@@ -559,10 +612,10 @@
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { labels: { color: t.text, boxWidth: 12, font: { size: 11 } } },
-          tooltip: { callbacks: { label: (c) => c.dataset.label + ": " + fmt(c.parsed.y) } } },
+          tooltip: { callbacks: { label: (c) => c.dataset.label + ": " + fmtChart(c.parsed.y) } } },
         scales: {
           x: { ticks: { color: t.text, font: { size: 11 } }, grid: { display: false } },
-          y: { ticks: { color: t.text, font: { size: 11 }, callback: (v) => fmt0(v) }, grid: { color: t.grid } },
+          y: { ticks: { color: t.text, font: { size: 11 }, callback: (v) => fmtChart0(v) }, grid: { color: t.grid } },
         },
       },
     });
@@ -573,7 +626,7 @@
       options: {
         responsive: true, maintainAspectRatio: false, cutout: "62%",
         plugins: { legend: { position: "bottom", labels: { color: t.text, boxWidth: 12, font: { size: 11 }, padding: 12 } },
-          tooltip: { callbacks: { label: (c) => c.label + ": " + fmt(c.parsed) } } },
+          tooltip: { callbacks: { label: (c) => c.label + ": " + fmtChart(c.parsed) } } },
       },
     });
   }
@@ -609,13 +662,14 @@
 
   // ---- boot ----
   applyTheme();
-  rebuildFmt();
   currencyEl.value = state.currency;
+  formatEl.value = state.format;
   bracketEl.value = state.bracket;
-  applyCurrencyUI();
+  applyModeUI();
   renderRows();
   initCharts();
   recompute();
+  loadFx();
 })();
 </script>
 </body>
