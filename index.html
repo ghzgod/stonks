@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Wolf of Wall Street — Gains &amp; Tax Calculator</title>
+<title>STONKS — Gains &amp; Tax Calculator</title>
 <meta name="description" content="Project your stock gains at a target price and estimate short- vs long-term capital gains tax. Not financial advice." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -190,9 +190,9 @@
 <div class="wrap">
   <header class="top">
     <div class="brand">
-      <div class="logo">🐺</div>
+      <div class="logo">📈</div>
       <div>
-        <h1>Wolf of Wall Street</h1>
+        <h1>STONKS</h1>
         <div class="sub">Project your gains · estimate your taxes · sell smart</div>
       </div>
     </div>
@@ -203,15 +203,18 @@
   </header>
 
   <div class="controls">
-    <div class="field" style="min-width: 240px; flex: 1;">
-      <label for="bracket">Your income tax bracket (auto-maps long-term rate)</label>
-      <select id="bracket"></select>
-    </div>
     <button class="btn primary" id="addBtn">+ Add stock</button>
     <button class="btn" id="resetBtn">Reset</button>
   </div>
 
   <div id="holdings"></div>
+
+  <div class="controls" style="margin-top: 18px;">
+    <div class="field" style="min-width: 240px; flex: 1;">
+      <label for="bracket">Your income tax bracket (auto-maps long-term rate)</label>
+      <select id="bracket"></select>
+    </div>
+  </div>
 
   <section class="summary">
     <h2>Portfolio projection</h2>
