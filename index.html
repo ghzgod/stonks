@@ -146,12 +146,12 @@
 
   /* per-card outputs */
   .outs { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; margin-top: 14px; }
-  .stat { background: var(--surface-2); border: 1px solid var(--border); border-radius: 11px; padding: 9px 11px; }
+  .stat { background: var(--surface-2); border: 1px solid var(--border); border-radius: 11px; padding: 9px 11px; min-width: 0; }
   .stat .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
-  .stat .v { font-size: 16px; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+  .stat .v { font-size: 16px; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; overflow-wrap: anywhere; }
   .pos { color: var(--accent); } .negv { color: var(--neg); } .goldv { color: var(--gold); }
   .tax-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
-  .tax-box { border: 1px solid var(--border); border-radius: 11px; padding: 10px 12px; background: var(--surface-2); position: relative; }
+  .tax-box { border: 1px solid var(--border); border-radius: 11px; padding: 10px 12px; background: var(--surface-2); position: relative; min-width: 0; }
   .tax-box.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .tax-box .lbl { font-size: 11px; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 6px; }
   .tax-box .lbl .badge { font-size: 9.5px; background: var(--accent-soft); color: var(--accent); padding: 2px 6px; border-radius: 999px; font-weight: 700; }
@@ -166,9 +166,9 @@
   }
   .summary h2 { margin: 0 0 14px; font-family: 'Sora', sans-serif; font-size: 15px; letter-spacing: .01em; }
   .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
-  .sum-stat { padding: 4px 2px; }
+  .sum-stat { padding: 4px 2px; min-width: 0; }
   .sum-stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
-  .sum-stat .v { font-size: 24px; font-weight: 800; margin-top: 4px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .sum-stat .v { font-size: clamp(19px, 5.4vw, 24px); font-weight: 800; margin-top: 4px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; overflow-wrap: anywhere; }
 
   /* Charts */
   .charts { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; margin-top: 20px; }
@@ -183,9 +183,36 @@
   footer.credit a { color: var(--muted); text-decoration: none; }
 
   @media (max-width: 760px) {
-    .card .inputs { grid-template-columns: 1fr 1fr; }
     .charts { grid-template-columns: 1fr; }
     .tax-row { grid-template-columns: 1fr; }
+
+    /* Controls bar: let fields shrink instead of forcing the bar wider than
+       the viewport. The holding-period toggle becomes a full-width row. */
+    .controls .field { min-width: 0 !important; flex: 1 1 140px; }
+    #usBracketField { flex: 1 1 100%; }
+    #termField { flex: 1 1 100%; }
+    #globalTerm { width: 100%; }
+    #globalTerm button { flex: 1; white-space: normal; min-width: 0; padding: 6px 8px; }
+    .controls .btn { flex: 1 1 auto; }
+
+    /* Holding cards: 4 inputs in a 2-up grid, ticker spans the full width,
+       and the remove button floats in the card's top-right corner instead
+       of orphaning a row. */
+    .card { padding-top: 14px; }
+    .card .inputs { grid-template-columns: 1fr 1fr; }
+    .card .inputs .field { min-width: 0; }
+    .card .inputs .field:first-child { grid-column: 1 / -1; }
+    .card .inputs .ticker-input { padding-right: 48px; }
+    .card .inputs .icon-btn {
+      position: absolute; top: 14px; right: 14px; width: 36px; height: 36px;
+    }
+  }
+
+  @media (max-width: 420px) {
+    .wrap { padding: 22px 14px 56px; }
+    .controls { padding: 14px; }
+    .card { padding: 14px 14px 12px; padding-top: 14px; }
+    .outs { grid-template-columns: 1fr 1fr; }
   }
 </style>
 </head>
