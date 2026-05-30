@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wolf of Wall Street — Gains &amp; Tax Calculator</title>
+<meta name="description" content="Project your stock gains at a target price and estimate short- vs long-term capital gains tax. Not financial advice." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0a0f10;
+    --bg-grad: radial-gradient(1200px 600px at 80% -10%, rgba(22,199,132,.10), transparent 60%),
+               radial-gradient(900px 500px at -10% 0%, rgba(212,175,55,.08), transparent 55%);
+    --surface: #111a1b;
+    --surface-2: #0e1516;
+    --border: #1f2c2e;
+    --border-strong: #2b3c3f;
+    --text: #e8f0f0;
+    --muted: #8aa0a3;
+    --faint: #5d7174;
+    --accent: #16c784;     /* money green */
+    --accent-soft: rgba(22,199,132,.14);
+    --gold: #e9c14a;
+    --gold-soft: rgba(233,193,74,.14);
+    --neg: #ef5350;
+    --neg-soft: rgba(239,83,80,.14);
+    --shadow: 0 16px 40px -20px rgba(0,0,0,.7);
+    --radius: 16px;
+  }
+  html[data-theme="light"] {
+    --bg: #f4f7f7;
+    --bg-grad: radial-gradient(1100px 600px at 85% -10%, rgba(22,199,132,.12), transparent 60%),
+               radial-gradient(800px 480px at -5% 0%, rgba(212,175,55,.12), transparent 55%);
+    --surface: #ffffff;
+    --surface-2: #f0f4f4;
+    --border: #e2eae9;
+    --border-strong: #cdd9d8;
+    --text: #0e1c1d;
+    --muted: #5a6e70;
+    --faint: #8aa0a3;
+    --accent: #0fae72;
+    --accent-soft: rgba(15,174,114,.12);
+    --gold: #b8922b;
+    --gold-soft: rgba(184,146,43,.14);
+    --neg: #e23b3b;
+    --neg-soft: rgba(226,59,59,.10);
+    --shadow: 0 16px 40px -24px rgba(20,40,40,.30);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: var(--bg);
+    background-image: var(--bg-grad);
+    background-attachment: fixed;
+    color: var(--text);
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 20px 64px; }
+
+  /* Header */
+  header.top { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+    background: linear-gradient(145deg, var(--accent), #0c8f5e);
+    box-shadow: 0 8px 22px -8px rgba(22,199,132,.6);
+    font-size: 24px;
+  }
+  .brand h1 {
+    font-family: 'Sora', sans-serif; font-weight: 800; font-size: clamp(20px, 3.2vw, 28px);
+    margin: 0; letter-spacing: -.02em;
+    background: linear-gradient(92deg, var(--text), var(--gold));
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .brand .sub { color: var(--muted); font-size: 12.5px; margin-top: 1px; }
+  .spacer { flex: 1; }
+  .theme-toggle {
+    display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 9px 13px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    transition: border-color .15s, transform .05s;
+  }
+  .theme-toggle:hover { border-color: var(--border-strong); }
+  .theme-toggle:active { transform: scale(.97); }
+
+  /* Controls bar */
+  .controls {
+    display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; margin-bottom: 18px; box-shadow: var(--shadow);
+  }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+  select, input[type="text"], input[type="number"] {
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 10px 12px; font-size: 14px; font-family: inherit;
+    transition: border-color .15s, box-shadow .15s; width: 100%;
+  }
+  select:focus, input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  input[type="number"] { -moz-appearance: textfield; }
+  input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+  .btn {
+    cursor: pointer; border: 1px solid var(--border-strong); background: var(--surface-2);
+    color: var(--text); border-radius: 10px; padding: 10px 14px; font-size: 13.5px; font-weight: 600;
+    font-family: inherit; transition: border-color .15s, background .15s, transform .05s; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn:active { transform: scale(.98); }
+  .btn.primary { background: linear-gradient(145deg, var(--accent), #0c8f5e); border-color: transparent; color: #022; }
+  .btn.primary:hover { filter: brightness(1.05); }
+
+  /* Holding cards */
+  #holdings { display: flex; flex-direction: column; gap: 14px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 16px 14px; box-shadow: var(--shadow); position: relative;
+  }
+  .card .inputs {
+    display: grid; gap: 12px;
+    grid-template-columns: 1.1fr .9fr .9fr .9fr auto auto;
+    align-items: end;
+  }
+  .ticker-input { text-transform: uppercase; font-weight: 700; letter-spacing: .03em; }
+  .term-toggle { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 3px; }
+  .term-toggle button {
+    border: 0; background: transparent; color: var(--muted); cursor: pointer; font-family: inherit;
+    font-size: 12px; font-weight: 600; padding: 7px 10px; border-radius: 7px; transition: background .15s, color .15s; white-space: nowrap;
+  }
+  .term-toggle button.active { background: var(--accent-soft); color: var(--accent); }
+  .icon-btn {
+    width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--faint); cursor: pointer; font-size: 16px;
+    display: grid; place-items: center; transition: color .15s, border-color .15s;
+  }
+  .icon-btn:hover { color: var(--neg); border-color: var(--neg); }
+
+  /* per-card outputs */
+  .outs { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; margin-top: 14px; }
+  .stat { background: var(--surface-2); border: 1px solid var(--border); border-radius: 11px; padding: 9px 11px; }
+  .stat .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+  .stat .v { font-size: 16px; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+  .pos { color: var(--accent); } .negv { color: var(--neg); } .goldv { color: var(--gold); }
+  .tax-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .tax-box { border: 1px solid var(--border); border-radius: 11px; padding: 10px 12px; background: var(--surface-2); position: relative; }
+  .tax-box.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .tax-box .lbl { font-size: 11px; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .tax-box .lbl .badge { font-size: 9.5px; background: var(--accent-soft); color: var(--accent); padding: 2px 6px; border-radius: 999px; font-weight: 700; }
+  .tax-box .grid2 { display: flex; justify-content: space-between; gap: 8px; margin-top: 7px; font-variant-numeric: tabular-nums; }
+  .tax-box .grid2 small { color: var(--muted); display: block; font-size: 10.5px; }
+  .tax-box .grid2 b { font-size: 14.5px; font-weight: 700; }
+
+  /* Summary */
+  .summary {
+    margin-top: 20px; background: linear-gradient(160deg, var(--surface), var(--surface-2));
+    border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow);
+  }
+  .summary h2 { margin: 0 0 14px; font-family: 'Sora', sans-serif; font-size: 15px; letter-spacing: .01em; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .sum-stat { padding: 4px 2px; }
+  .sum-stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+  .sum-stat .v { font-size: 24px; font-weight: 800; margin-top: 4px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+
+  /* Charts */
+  .charts { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; margin-top: 20px; }
+  .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); min-width: 0; }
+  .chart-card h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+  .chart-wrap { position: relative; height: 260px; }
+
+  /* Disclaimer */
+  .disclaimer { margin-top: 26px; color: var(--faint); font-size: 11.5px; line-height: 1.6; border-top: 1px dashed var(--border); padding-top: 16px; }
+  .disclaimer b { color: var(--muted); }
+  footer.credit { text-align: center; color: var(--faint); font-size: 11px; margin-top: 22px; }
+  footer.credit a { color: var(--muted); text-decoration: none; }
+
+  @media (max-width: 760px) {
+    .card .inputs { grid-template-columns: 1fr 1fr; }
+    .charts { grid-template-columns: 1fr; }
+    .tax-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="logo">🐺</div>
+      <div>
+        <h1>Wolf of Wall Street</h1>
+        <div class="sub">Project your gains · estimate your taxes · sell smart</div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle color theme">
+      <span id="themeIcon">🌙</span><span id="themeLabel">Dark</span>
+    </button>
+  </header>
+
+  <div class="controls">
+    <div class="field" style="min-width: 240px; flex: 1;">
+      <label for="bracket">Your income tax bracket (auto-maps long-term rate)</label>
+      <select id="bracket"></select>
+    </div>
+    <button class="btn primary" id="addBtn">+ Add stock</button>
+    <button class="btn" id="resetBtn">Reset</button>
+  </div>
+
+  <div id="holdings"></div>
+
+  <section class="summary">
+    <h2>Portfolio projection</h2>
+    <div class="summary-grid">
+      <div class="sum-stat"><div class="k">Total cost basis</div><div class="v" id="sumCost">$0</div></div>
+      <div class="sum-stat"><div class="k">Projected value</div><div class="v goldv" id="sumValue">$0</div></div>
+      <div class="sum-stat"><div class="k">Gross gain</div><div class="v" id="sumGain">$0</div></div>
+      <div class="sum-stat"><div class="k">Est. tax (selected)</div><div class="v negv" id="sumTax">$0</div></div>
+      <div class="sum-stat"><div class="k">After-tax proceeds</div><div class="v pos" id="sumNet">$0</div></div>
+    </div>
+  </section>
+
+  <div class="charts">
+    <div class="chart-card">
+      <h3>Cost basis vs projected value</h3>
+      <div class="chart-wrap"><canvas id="barChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>Projected value allocation</h3>
+      <div class="chart-wrap"><canvas id="pieChart"></canvas></div>
+    </div>
+  </div>
+
+  <p class="disclaimer">
+    <b>Not financial or tax advice.</b> This tool is for educational, what-if estimation only and may be inaccurate.
+    Tax figures are a simplified estimate of <b>U.S. federal capital gains</b> only: short-term gains (held &lt; 1 year)
+    are taxed at your ordinary income bracket; long-term gains (held ≥ 1 year) use the 0% / 15% / 20% rate roughly mapped
+    from your bracket. It does <b>not</b> include state taxes, the 3.8% Net Investment Income Tax, wash-sale rules,
+    cost-basis adjustments, deductions, or your actual marginal situation. Brackets are approximate and change yearly.
+    Markets are volatile and a target price is a hypothetical, not a prediction. Consult a licensed financial advisor or
+    CPA before making real decisions.
+  </p>
+  <footer class="credit">Built for fun. Your numbers stay in your browser — nothing is uploaded.</footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ---- US federal brackets (single-filer, approximate; updated yearly) ----
+  // lt = mapped long-term capital-gains rate for that income level.
+  const BRACKETS = [
+    { rate: 0.10, lt: 0.00, label: "10% — income up to ~$11.6k" },
+    { rate: 0.12, lt: 0.00, label: "12% — ~$11.6k–$47k" },
+    { rate: 0.22, lt: 0.15, label: "22% — ~$47k–$100k" },
+    { rate: 0.24, lt: 0.15, label: "24% — ~$100k–$192k" },
+    { rate: 0.32, lt: 0.15, label: "32% — ~$192k–$244k" },
+    { rate: 0.35, lt: 0.15, label: "35% — ~$244k–$609k" },
+    { rate: 0.37, lt: 0.20, label: "37% — ~$609k+" },
+  ];
+  const DEFAULT_BRACKET = 2; // 22%
+
+  const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+  const usd0 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+  const pct = (n) => (isFinite(n) ? (n >= 0 ? "+" : "") + n.toFixed(1) + "%" : "—");
+  const money = (n) => (Math.abs(n) >= 100000 ? usd0.format(n) : usd.format(n));
+
+  // ---- state ----
+  const LS = "wolf_state_v1";
+  let state = load() || {
+    theme: "dark",
+    bracket: DEFAULT_BRACKET,
+    holdings: [newHolding({ ticker: "", shares: "", cost: "", target: "", term: "long" })],
+  };
+  let uid = Math.max(0, ...state.holdings.map((h) => h.id)) + 1;
+
+  function newHolding(p) { return { id: p.id ?? 0, ticker: p.ticker ?? "", shares: p.shares ?? "", cost: p.cost ?? "", target: p.target ?? "", term: p.term ?? "long" }; }
+  function load() { try { const r = localStorage.getItem(LS); return r ? JSON.parse(r) : null; } catch { return null; } }
+  function save() { try { localStorage.setItem(LS, JSON.stringify(state)); } catch {} }
+
+  // ---- elements ----
+  const $ = (id) => document.getElementById(id);
+  const holdingsEl = $("holdings");
+  const bracketEl = $("bracket");
+
+  BRACKETS.forEach((b, i) => {
+    const o = document.createElement("option");
+    o.value = i; o.textContent = b.label; bracketEl.appendChild(o);
+  });
+
+  // ---- theme ----
+  function applyTheme() {
+    document.documentElement.setAttribute("data-theme", state.theme);
+    $("themeIcon").textContent = state.theme === "dark" ? "🌙" : "☀️";
+    $("themeLabel").textContent = state.theme === "dark" ? "Dark" : "Light";
+  }
+  $("themeToggle").addEventListener("click", () => {
+    state.theme = state.theme === "dark" ? "light" : "dark";
+    applyTheme(); save(); refreshChartTheme();
+  });
+
+  // ---- compute one holding ----
+  function compute(h) {
+    const shares = parseFloat(h.shares) || 0;
+    const cost = parseFloat(h.cost) || 0;
+    const target = parseFloat(h.target) || 0;
+    const b = BRACKETS[state.bracket] || BRACKETS[DEFAULT_BRACKET];
+    const totalCost = shares * cost;
+    const value = shares * target;
+    const gain = value - totalCost;
+    const taxable = Math.max(0, gain);
+    const stTax = taxable * b.rate;
+    const ltTax = taxable * b.lt;
+    return {
+      shares, cost, target, totalCost, value, gain,
+      gainPct: totalCost > 0 ? (gain / totalCost) * 100 : 0,
+      stTax, ltTax, stNet: value - stTax, ltNet: value - ltTax,
+      activeTax: h.term === "short" ? stTax : ltTax,
+      activeNet: h.term === "short" ? value - stTax : value - ltTax,
+    };
+  }
+
+  // ---- render rows (only on add / remove / load) ----
+  function renderRows() {
+    holdingsEl.innerHTML = "";
+    state.holdings.forEach((h) => holdingsEl.appendChild(rowEl(h)));
+  }
+
+  function rowEl(h) {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.dataset.id = h.id;
+    card.innerHTML = `
+      <div class="inputs">
+        <div class="field"><label>Ticker</label>
+          <input type="text" class="ticker-input" data-f="ticker" placeholder="AAPL" maxlength="8" value="${esc(h.ticker)}"></div>
+        <div class="field"><label>Shares</label>
+          <input type="number" data-f="shares" placeholder="100" step="any" min="0" value="${esc(h.shares)}"></div>
+        <div class="field"><label>Avg cost / share</label>
+          <input type="number" data-f="cost" placeholder="0.00" step="any" min="0" value="${esc(h.cost)}"></div>
+        <div class="field"><label>Target price</label>
+          <input type="number" data-f="target" placeholder="0.00" step="any" min="0" value="${esc(h.target)}"></div>
+        <div class="field"><label>Holding</label>
+          <div class="term-toggle" data-f="term">
+            <button type="button" data-term="short" class="${h.term === "short" ? "active" : ""}">&lt; 1 yr</button>
+            <button type="button" data-term="long" class="${h.term === "long" ? "active" : ""}">≥ 1 yr</button>
+          </div></div>
+        <button class="icon-btn" data-act="remove" title="Remove">✕</button>
+      </div>
+      <div class="outs">
+        <div class="stat"><div class="k">Cost basis</div><div class="v" data-o="cost">$0</div></div>
+        <div class="stat"><div class="k">Projected value</div><div class="v goldv" data-o="value">$0</div></div>
+        <div class="stat"><div class="k">Gain $</div><div class="v" data-o="gain">$0</div></div>
+        <div class="stat"><div class="k">Gain %</div><div class="v" data-o="gainpct">—</div></div>
+      </div>
+      <div class="tax-row">
+        <div class="tax-box" data-box="short">
+          <div class="lbl">Sold &lt; 1 year <span class="badge" data-o="strate"></span></div>
+          <div class="grid2"><span><small>Est. tax</small><b class="negv" data-o="sttax">$0</b></span>
+            <span style="text-align:right"><small>After-tax</small><b data-o="stnet">$0</b></span></div>
+        </div>
+        <div class="tax-box" data-box="long">
+          <div class="lbl">Sold ≥ 1 year <span class="badge" data-o="ltrate"></span></div>
+          <div class="grid2"><span><small>Est. tax</small><b class="negv" data-o="lttax">$0</b></span>
+            <span style="text-align:right"><small>After-tax</small><b data-o="ltnet">$0</b></span></div>
+        </div>
+      </div>`;
+    return card;
+  }
+  function esc(v) { return String(v).replace(/"/g, "&quot;"); }
+
+  // ---- update outputs only (on input — keeps focus) ----
+  function updateRowOutputs(card, h) {
+    const c = compute(h);
+    const b = BRACKETS[state.bracket] || BRACKETS[DEFAULT_BRACKET];
+    const set = (o, txt, cls) => {
+      const el = card.querySelector(`[data-o="${o}"]`);
+      if (!el) return;
+      el.textContent = txt;
+      if (cls !== undefined) { el.classList.remove("pos", "negv"); if (cls) el.classList.add(cls); }
+    };
+    set("cost", money(c.totalCost));
+    set("value", money(c.value));
+    set("gain", money(c.gain), c.gain >= 0 ? "pos" : "negv");
+    set("gainpct", c.totalCost > 0 ? pct(c.gainPct) : "—", c.gain >= 0 ? "pos" : "negv");
+    set("strate", Math.round(b.rate * 100) + "%");
+    set("ltrate", Math.round(b.lt * 100) + "%");
+    set("sttax", money(c.stTax));
+    set("stnet", money(c.stNet));
+    set("lttax", money(c.ltTax));
+    set("ltnet", money(c.ltNet));
+    card.querySelector('[data-box="short"]').classList.toggle("active", h.term === "short");
+    card.querySelector('[data-box="long"]').classList.toggle("active", h.term === "long");
+  }
+
+  function recompute() {
+    let tCost = 0, tValue = 0, tTax = 0;
+    const labels = [], costData = [], valueData = [];
+    state.holdings.forEach((h) => {
+      const card = holdingsEl.querySelector(`.card[data-id="${h.id}"]`);
+      if (card) updateRowOutputs(card, h);
+      const c = compute(h);
+      tCost += c.totalCost; tValue += c.value; tTax += c.activeTax;
+      const name = (h.ticker || "—").toUpperCase();
+      labels.push(name); costData.push(c.totalCost); valueData.push(c.value);
+    });
+    const tGain = tValue - tCost;
+    $("sumCost").textContent = money(tCost);
+    $("sumValue").textContent = money(tValue);
+    const sg = $("sumGain"); sg.textContent = money(tGain);
+    sg.className = "v " + (tGain >= 0 ? "pos" : "negv");
+    $("sumTax").textContent = money(tTax);
+    $("sumNet").textContent = money(tValue - tTax);
+    updateCharts(labels, costData, valueData);
+    save();
+  }
+
+  // ---- events (delegated) ----
+  holdingsEl.addEventListener("input", (e) => {
+    const card = e.target.closest(".card"); if (!card) return;
+    const h = state.holdings.find((x) => x.id == card.dataset.id); if (!h) return;
+    const f = e.target.dataset.f; if (!f) return;
+    h[f] = e.target.value;
+    recompute();
+  });
+  holdingsEl.addEventListener("click", (e) => {
+    const card = e.target.closest(".card"); if (!card) return;
+    const h = state.holdings.find((x) => x.id == card.dataset.id); if (!h) return;
+    if (e.target.dataset.act === "remove") {
+      state.holdings = state.holdings.filter((x) => x.id != h.id);
+      if (state.holdings.length === 0) state.holdings.push(newHolding({ id: uid++ }));
+      renderRows(); recompute(); return;
+    }
+    const term = e.target.dataset.term;
+    if (term) {
+      h.term = term;
+      card.querySelectorAll(".term-toggle button").forEach((b) => b.classList.toggle("active", b.dataset.term === term));
+      recompute();
+    }
+  });
+  $("addBtn").addEventListener("click", () => {
+    state.holdings.push(newHolding({ id: uid++ }));
+    renderRows(); recompute();
+    const last = holdingsEl.lastElementChild?.querySelector(".ticker-input");
+    if (last) last.focus();
+  });
+  $("resetBtn").addEventListener("click", () => {
+    if (!confirm("Clear all stocks and start over?")) return;
+    state.holdings = [newHolding({ id: uid++ })];
+    renderRows(); recompute();
+  });
+  bracketEl.addEventListener("change", () => { state.bracket = parseInt(bracketEl.value, 10); recompute(); });
+
+  // ---- charts ----
+  let barChart, pieChart;
+  const PIE_COLORS = ["#16c784", "#e9c14a", "#3aa0ff", "#b06cff", "#ff6b9d", "#ff9f40", "#4fd1c5", "#f97066", "#a3e635", "#22d3ee"];
+  function themeColors() {
+    const cs = getComputedStyle(document.documentElement);
+    return {
+      text: cs.getPropertyValue("--muted").trim(),
+      grid: cs.getPropertyValue("--border").trim(),
+      accent: cs.getPropertyValue("--accent").trim(),
+      gold: cs.getPropertyValue("--gold").trim(),
+      surface: cs.getPropertyValue("--surface").trim(),
+    };
+  }
+  function initCharts() {
+    const t = themeColors();
+    const ctxB = $("barChart").getContext("2d");
+    barChart = new Chart(ctxB, {
+      type: "bar",
+      data: { labels: [], datasets: [
+        { label: "Cost basis", data: [], backgroundColor: t.gold, borderRadius: 6, maxBarThickness: 46 },
+        { label: "Projected value", data: [], backgroundColor: t.accent, borderRadius: 6, maxBarThickness: 46 },
+      ]},
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: t.text, boxWidth: 12, font: { size: 11 } } },
+          tooltip: { callbacks: { label: (c) => c.dataset.label + ": " + usd.format(c.parsed.y) } } },
+        scales: {
+          x: { ticks: { color: t.text, font: { size: 11 } }, grid: { display: false } },
+          y: { ticks: { color: t.text, font: { size: 11 }, callback: (v) => usd0.format(v) }, grid: { color: t.grid } },
+        },
+      },
+    });
+    const ctxP = $("pieChart").getContext("2d");
+    pieChart = new Chart(ctxP, {
+      type: "doughnut",
+      data: { labels: [], datasets: [{ data: [], backgroundColor: PIE_COLORS, borderColor: t.surface, borderWidth: 2 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: "62%",
+        plugins: { legend: { position: "bottom", labels: { color: t.text, boxWidth: 12, font: { size: 11 }, padding: 12 } },
+          tooltip: { callbacks: { label: (c) => c.label + ": " + usd.format(c.parsed) } } },
+      },
+    });
+  }
+  function updateCharts(labels, cost, value) {
+    if (!barChart) return;
+    barChart.data.labels = labels;
+    barChart.data.datasets[0].data = cost;
+    barChart.data.datasets[1].data = value;
+    barChart.update("none");
+    const filtered = labels.map((l, i) => [l, value[i]]).filter((x) => x[1] > 0);
+    pieChart.data.labels = filtered.map((x) => x[0]);
+    pieChart.data.datasets[0].data = filtered.map((x) => x[1]);
+    pieChart.update("none");
+  }
+  function refreshChartTheme() {
+    const t = themeColors();
+    [barChart, pieChart].forEach((ch) => { if (!ch) return; });
+    if (barChart) {
+      barChart.data.datasets[0].backgroundColor = t.gold;
+      barChart.data.datasets[1].backgroundColor = t.accent;
+      barChart.options.plugins.legend.labels.color = t.text;
+      barChart.options.scales.x.ticks.color = t.text;
+      barChart.options.scales.y.ticks.color = t.text;
+      barChart.options.scales.y.grid.color = t.grid;
+      barChart.update("none");
+    }
+    if (pieChart) {
+      pieChart.data.datasets[0].borderColor = t.surface;
+      pieChart.options.plugins.legend.labels.color = t.text;
+      pieChart.update("none");
+    }
+  }
+
+  // ---- boot ----
+  applyTheme();
+  bracketEl.value = state.bracket;
+  renderRows();
+  initCharts();
+  recompute();
+})();
+</script>
+</body>
+</html>
