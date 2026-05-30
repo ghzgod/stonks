@@ -297,32 +297,35 @@
   // surcharge = 26.375%, regardless of holding period. Used in EUR mode.
   const GERMAN_RATE = 0.26375;
 
-  // Currency-aware formatters, rebuilt whenever the currency changes. EUR uses
-  // European notation (1.234,56 €); USD uses $1,234.56.
-  let CF2, CF0;
-  function rebuildFmt() {
-    const loc = state.currency === "EUR" ? "de-DE" : "en-US";
-    CF2 = new Intl.NumberFormat(loc, { style: "currency", currency: state.currency, maximumFractionDigits: 2 });
-    CF0 = new Intl.NumberFormat(loc, { style: "currency", currency: state.currency, maximumFractionDigits: 0 });
-  }
-  const fmt = (n) => CF2.format(n);
-  const fmt0 = (n) => CF0.format(n);
-  const pct = (n) => (isFinite(n) ? (n >= 0 ? "+" : "") + n.toFixed(1) + "%" : "—");
-  const money = (n) => (Math.abs(n) >= 100000 ? CF0.format(n) : CF2.format(n));
+  // Always render numbers in European notation — comma for the decimal,
+  // period for thousands (e.g. $3.543,45 / €3.543,45) — keeping the selected
+  // currency's symbol. rebuildFmt is kept as a no-op for call-site compat.
+  function rebuildFmt() {}
+  const EU = (n, d) => new Intl.NumberFormat("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d }).format(n);
+  const symOf = () => (state.currency === "EUR" ? "€" : "$");
+  const fmt = (n) => (n == null || !isFinite(n) ? "—" : symOf() + EU(n, 2));
+  const fmt0 = (n) => (n == null || !isFinite(n) ? "—" : symOf() + EU(n, 0));
+  const pct = (n) => (isFinite(n) ? (n >= 0 ? "+" : "") + n.toFixed(1).replace(".", ",") + "%" : "—");
+  const money = (n) => (Math.abs(n) >= 100000 ? fmt0(n) : fmt(n));
 
-  // Parse a number from a possibly-European-formatted string. In EUR mode a
-  // comma is the decimal separator (21,94 -> 21.94) and periods are thousands
-  // (1.234,56 -> 1234.56). In USD mode commas are thousands (1,234.56).
+  // Parse a number where a COMMA is the decimal separator (European). The last
+  // comma or period in the string is treated as the decimal point; all other
+  // separators are stripped. So "0,8791" -> 0.8791, "1.234,56" -> 1234.56,
+  // "1,234.56" -> 1234.56, "4031" -> 4031 all parse correctly.
   function parseNum(str) {
     if (str == null) return 0;
     str = String(str).trim();
     if (!str) return 0;
-    if (state.currency === "EUR") {
-      if (str.indexOf(",") >= 0) str = str.replace(/\./g, "").replace(",", ".");
+    const lastSep = Math.max(str.lastIndexOf(","), str.lastIndexOf("."));
+    let out;
+    if (lastSep === -1) {
+      out = str.replace(/[^0-9eE+-]/g, "");
     } else {
-      str = str.replace(/,/g, "");
+      const intPart = str.slice(0, lastSep).replace(/[^0-9-]/g, "");
+      const fracPart = str.slice(lastSep + 1).replace(/[^0-9]/g, "");
+      out = intPart + "." + fracPart;
     }
-    const n = parseFloat(str);
+    const n = parseFloat(out);
     return isFinite(n) ? n : 0;
   }
 
