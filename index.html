@@ -340,6 +340,8 @@
   const fmtChart = (n) => (isFinite(n) ? symOf() + numFmt(n, 2) : "—");
   const fmtChart0 = (n) => (isFinite(n) ? symOf() + numFmt(n, 0) : "—");
   function rebuildFmt() {}  // no-op (call-site compat)
+  // Placeholder decimal sample that matches the selected notation (0,00 / 0.00).
+  const decPlaceholder = () => (state.format === "EU" ? "0,00" : "0.00");
 
   // Parse a number — the LAST comma/period is the decimal point; everything
   // before it is thousands grouping. Works for both "0,8791" -> 0.8791 and
@@ -449,9 +451,9 @@
         <div class="field"><label>Shares</label>
           <input type="text" inputmode="decimal" autocomplete="off" data-f="shares" placeholder="100" value="${esc(h.shares)}"></div>
         <div class="field"><label>Avg cost / share</label>
-          <input type="text" inputmode="decimal" autocomplete="off" data-f="cost" placeholder="0.00" value="${esc(h.cost)}"></div>
+          <input type="text" inputmode="decimal" autocomplete="off" data-f="cost" placeholder="${decPlaceholder()}" value="${esc(h.cost)}"></div>
         <div class="field"><label>Target price</label>
-          <input type="text" inputmode="decimal" autocomplete="off" data-f="target" placeholder="0.00" value="${esc(h.target)}"></div>
+          <input type="text" inputmode="decimal" autocomplete="off" data-f="target" placeholder="${decPlaceholder()}" value="${esc(h.target)}"></div>
         <button class="icon-btn" data-act="remove" title="Remove">✕</button>
       </div>
       <div class="outs">
@@ -584,7 +586,10 @@
     state.currency = currencyEl.value; applyModeUI(); recompute();
   });
   formatEl.addEventListener("change", () => {
-    state.format = formatEl.value; applyModeUI(); recompute();
+    state.format = formatEl.value;
+    holdingsEl.querySelectorAll('input[data-f="cost"], input[data-f="target"]')
+      .forEach((el) => { el.placeholder = decPlaceholder(); });
+    applyModeUI(); recompute();
   });
 
   // ---- charts ----
