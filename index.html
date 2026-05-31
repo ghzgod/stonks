@@ -159,11 +159,14 @@
   .tax-box .grid2 small { color: var(--muted); display: block; font-size: 10.5px; }
   .tax-box .grid2 b { font-size: 14.5px; font-weight: 700; }
 
-  /* Add-shares calculator — collapsible toggle, folded into the card (no divider) */
+  /* Add-shares calculator — the toggle stays put; the inputs SLIDE OUT to its
+     right, in-line, so the output boxes below never shift. The row reserves the
+     inputs' height even when closed, which is what keeps the outputs anchored. */
+  .add-row { display: flex; align-items: center; gap: 16px; margin-top: 16px; min-height: 59px; }
   .add-toggle {
-    display: inline-flex; align-items: center; gap: 9px; cursor: pointer; padding: 0;
-    background: transparent; border: 0; color: var(--muted); font-family: inherit;
-    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin: 16px 0 0;
+    display: inline-flex; align-items: center; gap: 9px; cursor: pointer; padding: 0; flex: none;
+    background: transparent; border: 0; color: var(--muted); font-family: inherit; white-space: nowrap;
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin: 0;
   }
   .add-toggle .sw {
     width: 34px; height: 19px; border-radius: 999px; background: var(--surface-2); flex: none;
@@ -176,10 +179,11 @@
   .add-toggle[aria-pressed="true"] { color: var(--accent); }
   .add-toggle[aria-pressed="true"] .sw { background: var(--accent-soft); border-color: var(--accent); }
   .add-toggle[aria-pressed="true"] .sw::after { transform: translateX(15px); background: var(--accent); }
-  .add-panel { margin-top: 12px; }
-  /* align-items:start so the field labels line up across all three columns */
-  .add-inputs { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: start; max-width: 580px; }
-  .add-spend { min-width: 150px; }
+  /* clipped to 0 width when closed; expands to reveal the inputs when open */
+  .add-slide { overflow: hidden; max-width: 0; opacity: 0; transition: max-width .32s ease, opacity .22s ease; }
+  .add-row.open .add-slide { max-width: 640px; opacity: 1; }
+  .add-inputs { display: grid; grid-template-columns: 150px 168px 150px; gap: 12px; align-items: start; width: max-content; }
+  .add-spend { min-width: 0; }
   /* Plain read-out: same box metrics as the inputs beside it (no accent border,
      no focus glow) so it's the same height and doesn't look "selected". */
   .add-spend .spend-box {
@@ -252,8 +256,12 @@
       position: absolute; top: 14px; right: 14px; width: 36px; height: 36px;
     }
 
-    /* Add-shares inputs: two boxes on top, the spend read-out spans below. */
-    .add-inputs { grid-template-columns: 1fr 1fr; }
+    /* No room to slide sideways on a phone: stack the toggle over the inputs
+       and reveal them below (it pushes down here, but the viewport demands it). */
+    .add-row { flex-direction: column; align-items: stretch; gap: 12px; min-height: 0; }
+    .add-slide { overflow: visible; opacity: 1; max-width: none; }
+    .add-row:not(.open) .add-slide { display: none; }
+    .add-inputs { width: auto; grid-template-columns: 1fr 1fr; }
     .add-spend { grid-column: 1 / -1; }
   }
 
@@ -560,17 +568,19 @@
           <input type="text" inputmode="decimal" autocomplete="off" data-f="target" placeholder="${decPlaceholder()}" value="${esc(h.target)}"></div>
         <button class="icon-btn" data-act="remove" title="Remove">✕</button>
       </div>
-      <button type="button" class="add-toggle" data-act="toggleAdd" aria-pressed="${h.addOn ? "true" : "false"}">
-        <span class="sw"></span><span>Add shares calculator</span>
-      </button>
-      <div class="add-panel"${h.addOn ? "" : " hidden"}>
-        <div class="add-inputs">
-          <div class="field"><label>Shares to add</label>
-            <input type="text" inputmode="decimal" autocomplete="off" data-f="buyQty" placeholder="0" value="${esc(h.buyQty ?? "")}"></div>
-          <div class="field"><label>Current trading price</label>
-            <input type="text" inputmode="decimal" autocomplete="off" data-f="buyPrice" placeholder="${decPlaceholder()}" value="${esc(h.buyPrice ?? "")}"></div>
-          <div class="field add-spend"><label>Cost to buy</label>
-            <div class="spend-box" data-o="spend">—</div></div>
+      <div class="add-row${h.addOn ? " open" : ""}">
+        <button type="button" class="add-toggle" data-act="toggleAdd" aria-pressed="${h.addOn ? "true" : "false"}">
+          <span class="sw"></span><span>Add shares calculator</span>
+        </button>
+        <div class="add-slide">
+          <div class="add-inputs">
+            <div class="field"><label>Shares to add</label>
+              <input type="text" inputmode="decimal" autocomplete="off" data-f="buyQty" placeholder="0" value="${esc(h.buyQty ?? "")}"></div>
+            <div class="field"><label>Current trading price</label>
+              <input type="text" inputmode="decimal" autocomplete="off" data-f="buyPrice" placeholder="${decPlaceholder()}" value="${esc(h.buyPrice ?? "")}"></div>
+            <div class="field add-spend"><label>Cost to buy</label>
+              <div class="spend-box" data-o="spend">—</div></div>
+          </div>
         </div>
       </div>
       <div class="outs">
@@ -709,8 +719,8 @@
     if (act === "toggleAdd") {
       h.addOn = !h.addOn;
       actEl.setAttribute("aria-pressed", h.addOn ? "true" : "false");
-      const panel = card.querySelector(".add-panel");
-      if (panel) panel.hidden = !h.addOn;
+      const row = card.querySelector(".add-row");
+      if (row) row.classList.toggle("open", h.addOn);
       recompute(); save(); return;
     }
   });
