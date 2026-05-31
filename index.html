@@ -191,6 +191,8 @@
   /* Current vs future dual values inside each output chip (only while adding).
      Current = green, Future = gold with a + prefix; right-aligned so digits line up. */
   .stat .dual { margin-top: 4px; display: flex; flex-direction: column; gap: 6px; }
+  /* hidden attr must beat the display:flex above, else Future rows never hide */
+  .stat .dual[hidden] { display: none; }
   /* "Current position" / "Future position" labels on the left (wrap to 2 lines
      in the narrow chip); the value stays one line, right-aligned, so the digits
      line up by place value with the row above. */
