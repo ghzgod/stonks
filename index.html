@@ -189,9 +189,11 @@
   /* Current vs future dual values inside each output chip (only while adding).
      Current = green, Future = gold with a + prefix; right-aligned so digits line up. */
   .stat .dual { margin-top: 4px; display: flex; flex-direction: column; gap: 3px; }
-  .stat .drow { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-  .stat .drow .dl { font-size: 9.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--faint); font-weight: 600; white-space: nowrap; }
-  .stat .drow .dv { font-size: 14.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat .drow { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+  .stat .drow .dl { font-size: 9px; text-transform: uppercase; letter-spacing: .02em; color: var(--faint); font-weight: 600; white-space: nowrap; flex: none; }
+  /* nowrap so the "+" never orphans onto its own line; right-aligned so the
+     digits line up with the value above regardless of the "+" prefix. */
+  .stat .drow .dv { font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
   .stat .drow .dv.cur { color: var(--accent); }
   .stat .drow .dv.fut { color: var(--gold); }
 
