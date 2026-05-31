@@ -159,10 +159,9 @@
   .tax-box .grid2 small { color: var(--muted); display: block; font-size: 10.5px; }
   .tax-box .grid2 b { font-size: 14.5px; font-weight: 700; }
 
-  /* Add-shares calculator — the toggle stays put; the inputs SLIDE OUT to its
-     right, in-line, so the output boxes below never shift. The row reserves the
-     inputs' height even when closed, which is what keeps the outputs anchored. */
-  .add-row { display: flex; align-items: center; gap: 16px; margin-top: 16px; min-height: 59px; }
+  /* Add-shares calculator — sits BELOW the output boxes. The toggle stays put;
+     the inputs slide out to its right when opened (nothing below them to push). */
+  .add-row { display: flex; align-items: center; gap: 16px; margin-top: 14px; }
   .add-toggle {
     display: inline-flex; align-items: center; gap: 9px; cursor: pointer; padding: 0; flex: none;
     background: transparent; border: 0; color: var(--muted); font-family: inherit; white-space: nowrap;
@@ -179,9 +178,10 @@
   .add-toggle[aria-pressed="true"] { color: var(--accent); }
   .add-toggle[aria-pressed="true"] .sw { background: var(--accent-soft); border-color: var(--accent); }
   .add-toggle[aria-pressed="true"] .sw::after { transform: translateX(15px); background: var(--accent); }
-  /* clipped to 0 width when closed; expands to reveal the inputs when open */
-  .add-slide { overflow: hidden; max-width: 0; opacity: 0; transition: max-width .32s ease, opacity .22s ease; }
-  .add-row.open .add-slide { max-width: 640px; opacity: 1; }
+  /* fully collapsed (0x0) when closed so there's no empty band; expands to the
+     right to reveal the inputs when open */
+  .add-slide { overflow: hidden; max-width: 0; max-height: 0; opacity: 0; transition: max-width .32s ease, max-height .32s ease, opacity .22s ease; }
+  .add-row.open .add-slide { max-width: 640px; max-height: 90px; opacity: 1; }
   .add-inputs { display: grid; grid-template-columns: 150px 168px 150px; gap: 12px; align-items: start; width: max-content; }
   .add-spend { min-width: 0; }
   /* Plain read-out: same box metrics as the inputs beside it (no accent border,
@@ -258,8 +258,8 @@
 
     /* No room to slide sideways on a phone: stack the toggle over the inputs
        and reveal them below (it pushes down here, but the viewport demands it). */
-    .add-row { flex-direction: column; align-items: stretch; gap: 12px; min-height: 0; }
-    .add-slide { overflow: visible; opacity: 1; max-width: none; }
+    .add-row { flex-direction: column; align-items: stretch; gap: 12px; }
+    .add-slide { overflow: visible; opacity: 1; max-width: none; max-height: none; }
     .add-row:not(.open) .add-slide { display: none; }
     .add-inputs { width: auto; grid-template-columns: 1fr 1fr; }
     .add-spend { grid-column: 1 / -1; }
@@ -568,6 +568,14 @@
           <input type="text" inputmode="decimal" autocomplete="off" data-f="target" placeholder="${decPlaceholder()}" value="${esc(h.target)}"></div>
         <button class="icon-btn" data-act="remove" title="Remove">✕</button>
       </div>
+      <div class="outs">
+        ${statCell("Cost basis", "cost")}
+        ${statCell("Projected value", "value", "goldv")}
+        ${statCell("Gain $", "gain")}
+        ${statCell("Gain %", "gainpct", "", "—")}
+        ${statCell("Est. tax", "tax", "negv", "$0", "taxlbl")}
+        ${statCell("After-tax", "net", "pos")}
+      </div>
       <div class="add-row${h.addOn ? " open" : ""}">
         <button type="button" class="add-toggle" data-act="toggleAdd" aria-pressed="${h.addOn ? "true" : "false"}">
           <span class="sw"></span><span>Add shares calculator</span>
@@ -582,14 +590,6 @@
               <div class="spend-box" data-o="spend">—</div></div>
           </div>
         </div>
-      </div>
-      <div class="outs">
-        ${statCell("Cost basis", "cost")}
-        ${statCell("Projected value", "value", "goldv")}
-        ${statCell("Gain $", "gain")}
-        ${statCell("Gain %", "gainpct", "", "—")}
-        ${statCell("Est. tax", "tax", "negv", "$0", "taxlbl")}
-        ${statCell("After-tax", "net", "pos")}
       </div>`;
     return card;
   }
