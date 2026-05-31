@@ -1,8 +1,0 @@
-name = "stonks-quote-proxy"
-main = "src/index.js"
-compatibility_date = "2026-05-01"
-
-# Deploy from this folder:
-#   cd worker && npx wrangler deploy
-# Free Workers plan is far more than enough (100k requests/day).
-# No KV, secrets, or env vars required.
