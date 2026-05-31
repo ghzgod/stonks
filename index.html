@@ -159,6 +159,20 @@
   .tax-box .grid2 small { color: var(--muted); display: block; font-size: 10.5px; }
   .tax-box .grid2 b { font-size: 14.5px; font-weight: 700; }
 
+  /* Buy-more-shares calculator */
+  .buy-calc {
+    margin-top: 18px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow);
+  }
+  .buy-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .buy-title { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 15px; }
+  .buy-sub { color: var(--muted); font-size: 12.5px; }
+  .buy-inputs { display: grid; grid-template-columns: 1.1fr .9fr .9fr; gap: 12px; align-items: end; }
+  .buy-calc .outs { margin-top: 14px; }
+  .buy-empty { display: none; color: var(--muted); font-size: 13px; padding: 4px 2px; }
+  .buy-calc.empty .buy-inputs, .buy-calc.empty .outs { display: none; }
+  .buy-calc.empty .buy-empty { display: block; }
+
   /* Summary */
   .summary {
     margin-top: 20px; background: linear-gradient(160deg, var(--surface), var(--surface-2));
@@ -185,6 +199,10 @@
   @media (max-width: 760px) {
     .charts { grid-template-columns: 1fr; }
     .tax-row { grid-template-columns: 1fr; }
+
+    /* Buy calc: ticker spans full width, price + shares share a row. */
+    .buy-inputs { grid-template-columns: 1fr 1fr; }
+    .buy-inputs .field:first-child { grid-column: 1 / -1; }
 
     /* Controls bar: let fields shrink instead of forcing the bar wider than
        the viewport. The holding-period toggle becomes a full-width row. */
@@ -213,6 +231,7 @@
     .controls { padding: 14px; }
     .card { padding: 14px 14px 12px; padding-top: 14px; }
     .outs { grid-template-columns: 1fr 1fr; }
+    .buy-calc .outs { grid-template-columns: 1fr 1fr; }
   }
 </style>
 </head>
@@ -253,6 +272,35 @@
   </div>
 
   <div id="holdings"></div>
+
+  <!-- Buy-more-shares calculator -->
+  <div class="buy-calc" id="buyCalc">
+    <div class="buy-head">
+      <span class="buy-title">🛒 Buy more shares</span>
+      <span class="buy-sub">Estimate the cost to add to a position — and the upside at your target price</span>
+    </div>
+    <div class="buy-inputs">
+      <div class="field">
+        <label for="buyTicker">Stock</label>
+        <select id="buyTicker"></select>
+      </div>
+      <div class="field">
+        <label for="buyPrice">Current share price</label>
+        <input type="text" inputmode="decimal" autocomplete="off" id="buyPrice" placeholder="0.00" />
+      </div>
+      <div class="field">
+        <label for="buyShares">Shares to buy</label>
+        <input type="text" inputmode="decimal" autocomplete="off" id="buyShares" placeholder="100" />
+      </div>
+    </div>
+    <div class="outs" id="buyOuts">
+      <div class="stat"><div class="k">Purchase cost</div><div class="v negv" id="buyCost">—</div></div>
+      <div class="stat"><div class="k" id="buyValueLbl">Value at target</div><div class="v goldv" id="buyValue">—</div></div>
+      <div class="stat"><div class="k">Projected gain</div><div class="v" id="buyGain">—</div></div>
+      <div class="stat"><div class="k">Gain %</div><div class="v" id="buyGainPct">—</div></div>
+    </div>
+    <div class="buy-empty" id="buyEmpty">Add a stock with a ticker symbol above, then it'll appear here to buy more of.</div>
+  </div>
 
   <div class="controls" style="margin-top: 18px;">
     <div class="field" id="usBracketField" style="min-width: 220px; flex: 1;">
@@ -410,10 +458,12 @@
     format: "US",  // "US" (1,234.56) or "EU" (1.234,56) number notation
     term: "long",  // GLOBAL holding period: "short" (< 1yr) or "long" (>= 1yr)
     holdings: [newHolding({ ticker: "", shares: "", cost: "", target: "" })],
+    buy: { id: null, price: "", shares: "" },  // "buy more shares" calculator
   };
   if (state.term !== "short" && state.term !== "long") state.term = "long";
   if (state.currency !== "EUR" && state.currency !== "USD") state.currency = "USD";
   if (state.format !== "EU" && state.format !== "US") state.format = "US";
+  if (!state.buy || typeof state.buy !== "object") state.buy = { id: null, price: "", shares: "" };
   let uid = Math.max(0, ...state.holdings.map((h) => h.id)) + 1;
 
   function newHolding(p) { return { id: p.id ?? 0, ticker: p.ticker ?? "", shares: p.shares ?? "", cost: p.cost ?? "", target: p.target ?? "", term: p.term ?? "long" }; }
@@ -549,6 +599,7 @@
     $("sumTax").textContent = money(tTax);
     $("sumNet").textContent = money(tValue - tTax);
     updateCharts(labels, costData, valueData);
+    recomputeBuy();
     save();
   }
 
@@ -558,6 +609,7 @@
     const h = state.holdings.find((x) => x.id == card.dataset.id); if (!h) return;
     const f = e.target.dataset.f; if (!f) return;
     h[f] = e.target.value;
+    if (f === "ticker") refreshBuyOptions();
     recompute();
   });
   holdingsEl.addEventListener("click", (e) => {
@@ -566,19 +618,19 @@
     if (e.target.dataset.act === "remove") {
       state.holdings = state.holdings.filter((x) => x.id != h.id);
       if (state.holdings.length === 0) state.holdings.push(newHolding({ id: uid++ }));
-      renderRows(); recompute(); return;
+      renderRows(); refreshBuyOptions(); recompute(); return;
     }
   });
   $("addBtn").addEventListener("click", () => {
     state.holdings.push(newHolding({ id: uid++ }));
-    renderRows(); recompute();
+    renderRows(); refreshBuyOptions(); recompute();
     const last = holdingsEl.lastElementChild?.querySelector(".ticker-input");
     if (last) last.focus();
   });
   $("resetBtn").addEventListener("click", () => {
     if (!confirm("Clear all stocks and start over?")) return;
     state.holdings = [newHolding({ id: uid++ })];
-    renderRows(); recompute();
+    renderRows(); refreshBuyOptions(); recompute();
   });
   bracketEl.addEventListener("change", () => { state.bracket = parseInt(bracketEl.value, 10); recompute(); });
 
@@ -619,8 +671,69 @@
     state.format = formatEl.value;
     holdingsEl.querySelectorAll('input[data-f="cost"], input[data-f="target"]')
       .forEach((el) => { el.placeholder = decPlaceholder(); });
+    buyPriceEl.placeholder = decPlaceholder();
     applyModeUI(); recompute();
   });
+
+  // ---- buy-more-shares calculator ----
+  // Dropdown auto-populated from the tickers you've added above. We can't pull a
+  // live price in a static page, so the user types the current price; cost =
+  // price × shares. If the selected holding has a target price, we also project
+  // value / gain on the NEW shares at that target.
+  const buyCalcEl = $("buyCalc");
+  const buyTickerEl = $("buyTicker");
+  const buyPriceEl = $("buyPrice");
+  const buySharesEl = $("buyShares");
+
+  function holdingsWithTicker() {
+    return state.holdings.filter((h) => (h.ticker || "").trim() !== "");
+  }
+  function refreshBuyOptions() {
+    const opts = holdingsWithTicker();
+    const prev = state.buy.id;
+    buyTickerEl.innerHTML = "";
+    opts.forEach((h) => {
+      const o = document.createElement("option");
+      o.value = h.id; o.textContent = (h.ticker || "").toUpperCase();
+      buyTickerEl.appendChild(o);
+    });
+    if (opts.some((h) => h.id == prev)) {
+      buyTickerEl.value = String(prev);
+    } else {
+      state.buy.id = opts.length ? opts[0].id : null;
+      if (opts.length) buyTickerEl.value = String(opts[0].id);
+    }
+    buyCalcEl.classList.toggle("empty", opts.length === 0);
+  }
+  function recomputeBuy() {
+    const h = state.holdings.find((x) => x.id == state.buy.id);
+    const price = parseNum(state.buy.price);
+    const shares = parseNum(state.buy.shares);
+    const cost = price * shares;
+    $("buyCost").textContent = (price > 0 && shares > 0) ? money(cost) : "—";
+
+    const target = h ? parseNum(h.target) : 0;
+    $("buyValueLbl").textContent = target > 0 ? "Value at " + money(target) + " target" : "Value at target";
+
+    let value = NaN, gain = NaN, gainPct = NaN;
+    if (target > 0 && shares > 0) {
+      value = shares * target;
+      gain = value - cost;
+      gainPct = cost > 0 ? (gain / cost) * 100 : NaN;
+    }
+    $("buyValue").textContent = isFinite(value) ? money(value) : "—";
+    const gEl = $("buyGain");
+    gEl.textContent = isFinite(gain) ? money(gain) : "—";
+    gEl.className = "v " + (isFinite(gain) ? (gain >= 0 ? "pos" : "negv") : "");
+    const pEl = $("buyGainPct");
+    pEl.textContent = isFinite(gainPct) ? pct(gainPct) : "—";
+    pEl.className = "v " + (isFinite(gainPct) ? (gainPct >= 0 ? "pos" : "negv") : "");
+  }
+  buyTickerEl.addEventListener("change", () => {
+    state.buy.id = parseInt(buyTickerEl.value, 10); recomputeBuy(); save();
+  });
+  buyPriceEl.addEventListener("input", () => { state.buy.price = buyPriceEl.value; recomputeBuy(); save(); });
+  buySharesEl.addEventListener("input", () => { state.buy.shares = buySharesEl.value; recomputeBuy(); save(); });
 
   // ---- charts ----
   let barChart, pieChart;
@@ -702,6 +815,10 @@
   bracketEl.value = state.bracket;
   applyModeUI();
   renderRows();
+  buyPriceEl.value = state.buy.price;
+  buySharesEl.value = state.buy.shares;
+  buyPriceEl.placeholder = decPlaceholder();
+  refreshBuyOptions();
   initCharts();
   recompute();
   loadFx();
