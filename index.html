@@ -177,20 +177,23 @@
   .add-toggle[aria-pressed="true"] .sw { background: var(--accent-soft); border-color: var(--accent); }
   .add-toggle[aria-pressed="true"] .sw::after { transform: translateX(15px); background: var(--accent); }
   .add-panel { margin-top: 12px; }
-  .add-inputs { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; max-width: 580px; }
-  .add-spend { background: var(--surface-2); border: 1px solid var(--accent); border-radius: 11px; padding: 9px 13px; min-width: 140px; box-shadow: 0 0 0 3px var(--accent-soft); }
-  .add-spend .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
-  .add-spend .v { font-size: 16px; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  /* align-items:start so the field labels line up across all three columns */
+  .add-inputs { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: start; max-width: 580px; }
+  .add-spend { min-width: 150px; }
+  .add-spend .spend-box {
+    background: var(--surface-2); border: 1px solid var(--accent); border-radius: 10px;
+    padding: 10px 12px; font-size: 15px; line-height: 1.45; font-weight: 700; color: var(--text);
+    font-variant-numeric: tabular-nums; box-shadow: 0 0 0 3px var(--accent-soft);
+  }
 
-  /* Dual own-vs-buy values inside each output chip */
-  .stat .v.added { font-size: 15px; margin-top: 3px; color: var(--accent); }
-  .stat .v.own-val { color: var(--muted) !important; }
-  .add-legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 12px; font-size: 12px; color: var(--muted); }
-  .add-legend .lg { display: inline-flex; align-items: center; gap: 7px; }
-  .add-legend i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
-  .add-legend .own i { background: var(--muted); }
-  .add-legend .buy i { background: var(--accent); }
-  .add-legend b { color: var(--text); }
+  /* Current vs future dual values inside each output chip (only while adding).
+     Current = green, Future = gold with a + prefix; right-aligned so digits line up. */
+  .stat .dual { margin-top: 4px; display: flex; flex-direction: column; gap: 3px; }
+  .stat .drow { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .stat .drow .dl { font-size: 9.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--faint); font-weight: 600; white-space: nowrap; }
+  .stat .drow .dv { font-size: 14.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat .drow .dv.cur { color: var(--accent); }
+  .stat .drow .dv.fut { color: var(--gold); }
 
   /* Summary */
   .summary {
@@ -406,8 +409,6 @@
   function rebuildFmt() {}  // no-op (call-site compat)
   // Placeholder decimal sample that matches the selected notation (0,00 / 0.00).
   const decPlaceholder = () => (state.format === "EU" ? "0,00" : "0.00");
-  // Share counts: grouped per notation, trailing zeros trimmed (supports fractional shares).
-  const sharesFmt = (n) => new Intl.NumberFormat(notationLoc(), { maximumFractionDigits: 4 }).format(n);
 
   // Parse a number per the selected NOTATION:
   //   EU: comma = decimal, period/space = thousands ("1.234,56" -> 1234.56)
@@ -550,62 +551,83 @@
             <input type="text" inputmode="decimal" autocomplete="off" data-f="buyQty" placeholder="0" value="${esc(h.buyQty ?? "")}"></div>
           <div class="field"><label>Current trading price</label>
             <input type="text" inputmode="decimal" autocomplete="off" data-f="buyPrice" placeholder="${decPlaceholder()}" value="${esc(h.buyPrice ?? "")}"></div>
-          <div class="add-spend"><div class="k">Cost to buy</div><div class="v negv" data-o="spend">—</div></div>
+          <div class="field add-spend"><label>Cost to buy</label>
+            <div class="spend-box" data-o="spend">—</div></div>
         </div>
       </div>
       <div class="outs">
-        <div class="stat"><div class="k">Cost basis</div><div class="v" data-o="cost">$0</div><div class="v added" data-o="costAdd" hidden></div></div>
-        <div class="stat"><div class="k">Projected value</div><div class="v goldv" data-o="value">$0</div><div class="v added" data-o="valueAdd" hidden></div></div>
-        <div class="stat"><div class="k">Gain $</div><div class="v" data-o="gain">$0</div><div class="v added" data-o="gainAdd" hidden></div></div>
-        <div class="stat"><div class="k">Gain %</div><div class="v" data-o="gainpct">—</div><div class="v added" data-o="gainpctAdd" hidden></div></div>
-        <div class="stat"><div class="k" data-o="taxlbl">Est. tax</div><div class="v negv" data-o="tax">$0</div><div class="v added" data-o="taxAdd" hidden></div></div>
-        <div class="stat"><div class="k">After-tax</div><div class="v pos" data-o="net">$0</div><div class="v added" data-o="netAdd" hidden></div></div>
-      </div>
-      <div class="add-legend" data-o="legend" hidden>
-        <span class="lg own"><i></i> Own now (<b data-o="legOwn"></b>)</span>
-        <span class="lg buy"><i></i> If you buy more (<b data-o="legBuy"></b>)</span>
+        ${statCell("Cost basis", "cost")}
+        ${statCell("Projected value", "value", "goldv")}
+        ${statCell("Gain $", "gain")}
+        ${statCell("Gain %", "gainpct", "", "—")}
+        ${statCell("Est. tax", "tax", "negv", "$0", "taxlbl")}
+        ${statCell("After-tax", "net", "pos")}
       </div>`;
     return card;
   }
   function esc(v) { return String(v).replace(/"/g, "&quot;"); }
+
+  // One output chip: a single value (shown when not adding) plus a hidden
+  // "Current / Future" dual block (shown when adding more shares).
+  // kId lets the label carry a data-o hook (used by the tax chip).
+  function statCell(label, base, naturalCls = "", initial = "$0", kId = "") {
+    const kAttr = kId ? ` data-o="${kId}"` : "";
+    return `
+        <div class="stat">
+          <div class="k"${kAttr}>${label}</div>
+          <div class="v ${naturalCls}" data-o="${base}">${initial}</div>
+          <div class="dual" data-o="${base}Dual" hidden>
+            <div class="drow"><span class="dl">Current</span><span class="dv cur" data-o="${base}Cur"></span></div>
+            <div class="drow"><span class="dl">Future</span><span class="dv fut" data-o="${base}Fut"></span></div>
+          </div>
+        </div>`;
+  }
 
   // ---- update outputs only (on input — keeps focus) ----
   function updateRowOutputs(card, h) {
     const c = compute(h);
     const b = BRACKETS[state.bracket] || BRACKETS[DEFAULT_BRACKET];
     const adding = c.adding;
+    const o = c.own, cm = c.combined;
+    const q = (k) => card.querySelector(`[data-o="${k}"]`);
+    // Prefix "+" for the gold Future row, unless the string is already signed.
+    const plus = (s) => (/^[+\-—]/.test(s) ? s : "+" + s);
 
-    // Top "current" line: when adding, recolor to the neutral "own" grey;
-    // otherwise keep each chip's natural color (gold / green / red).
-    const own = (o, txt, naturalCls) => {
-      const el = card.querySelector(`[data-o="${o}"]`);
+    // Single value: shown when NOT adding, with its natural color.
+    const single = (base, txt, naturalCls) => {
+      const el = q(base);
       if (!el) return;
-      el.textContent = txt;
-      el.classList.remove("pos", "negv", "goldv", "own-val");
-      if (adding) el.classList.add("own-val");
-      else if (naturalCls) el.classList.add(naturalCls);
+      el.textContent = txt; el.hidden = adding;
+      el.classList.remove("pos", "negv", "goldv");
+      if (naturalCls) el.classList.add(naturalCls);
     };
-    // Bottom "if you buy more" line (green): shown only when adding.
-    const add = (o, txt) => {
-      const el = card.querySelector(`[data-o="${o}"]`);
-      if (!el) return;
-      el.hidden = !adding;
-      if (adding) el.textContent = txt;
+    // Current (green) / Future (gold, +) dual rows: shown only when adding.
+    const dual = (base, curTxt, futTxt) => {
+      const d = q(base + "Dual");
+      if (d) d.hidden = !adding;
+      if (adding) {
+        const cu = q(base + "Cur"), fu = q(base + "Fut");
+        if (cu) cu.textContent = curTxt;
+        if (fu) fu.textContent = plus(futTxt);
+      }
     };
 
-    own("cost", money(c.own.totalCost), "");
-    own("value", money(c.own.value), "goldv");
-    own("gain", money(c.own.gain), c.own.gain >= 0 ? "pos" : "negv");
-    own("gainpct", c.own.totalCost > 0 ? pct(c.own.gainPct) : "—", c.own.gain >= 0 ? "pos" : "negv");
-    own("tax", money(c.own.activeTax), "negv");
-    own("net", money(c.own.activeNet), "pos");
+    const ownPct = o.totalCost > 0 ? pct(o.gainPct) : "—";
+    const futPct = cm.totalCost > 0 ? pct(cm.gainPct) : "—";
 
-    add("costAdd", money(c.combined.totalCost));
-    add("valueAdd", money(c.combined.value));
-    add("gainAdd", money(c.combined.gain));
-    add("gainpctAdd", c.combined.totalCost > 0 ? pct(c.combined.gainPct) : "—");
-    add("taxAdd", money(c.combined.activeTax));
-    add("netAdd", money(c.combined.activeNet));
+    single("cost", money(o.totalCost), "");
+    single("value", money(o.value), "goldv");
+    single("gain", money(o.gain), o.gain >= 0 ? "pos" : "negv");
+    single("gainpct", ownPct, o.gain >= 0 ? "pos" : "negv");
+    single("tax", money(o.activeTax), "negv");
+    single("net", money(o.activeNet), "pos");
+
+    dual("cost", money(o.totalCost), money(cm.totalCost));
+    dual("value", money(o.value), money(cm.value));
+    dual("gain", money(o.gain), money(cm.gain));
+    dual("gainpct", ownPct, futPct);
+    dual("tax", money(o.activeTax), money(cm.activeTax));
+    dual("net", money(o.activeNet), money(cm.activeNet));
 
     // Tax chip label (EUR = German flat rate; USD = bracket rate for the period).
     let taxLbl;
@@ -616,24 +638,12 @@
       const rate = isShort ? b.rate : b.lt;
       taxLbl = `Est. tax · ${isShort ? "ST" : "LT"} ${Math.round(rate * 100)}%`;
     }
-    const taxLblEl = card.querySelector('[data-o="taxlbl"]');
-    if (taxLblEl) taxLblEl.textContent = taxLbl;
+    const tl = q("taxlbl");
+    if (tl) tl.textContent = taxLbl;
 
     // Spend = what the extra shares cost to buy now.
-    const spendEl = card.querySelector('[data-o="spend"]');
-    if (spendEl) spendEl.textContent = (c.buyQty > 0 && c.buyPrice > 0) ? money(c.spend) : "—";
-
-    // Color legend, shown only while the dual values are visible.
-    const leg = card.querySelector('[data-o="legend"]');
-    if (leg) {
-      leg.hidden = !adding;
-      if (adding) {
-        const lo = card.querySelector('[data-o="legOwn"]');
-        const lb = card.querySelector('[data-o="legBuy"]');
-        if (lo) lo.textContent = sharesFmt(c.ownShares) + " sh";
-        if (lb) lb.textContent = sharesFmt(c.combined.shares) + " sh";
-      }
-    }
+    const sp = q("spend");
+    if (sp) sp.textContent = (c.buyQty > 0 && c.buyPrice > 0) ? money(c.spend) : "—";
   }
 
   function recompute() {
