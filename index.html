@@ -188,12 +188,15 @@
 
   /* Current vs future dual values inside each output chip (only while adding).
      Current = green, Future = gold with a + prefix; right-aligned so digits line up. */
-  .stat .dual { margin-top: 4px; display: flex; flex-direction: column; gap: 3px; }
-  .stat .drow { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
-  .stat .drow .dl { font-size: 9px; text-transform: uppercase; letter-spacing: .02em; color: var(--faint); font-weight: 600; white-space: nowrap; flex: none; }
+  .stat .dual { margin-top: 4px; display: flex; flex-direction: column; gap: 6px; }
+  /* "Current position" / "Future position" labels on the left (wrap to 2 lines
+     in the narrow chip); the value stays one line, right-aligned, so the digits
+     line up by place value with the row above. */
+  .stat .drow { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
+  .stat .drow .dl { font-size: 8.5px; text-transform: uppercase; letter-spacing: .02em; color: var(--faint); font-weight: 600; line-height: 1.25; flex: none; max-width: 44px; }
   /* nowrap so the "+" never orphans onto its own line; right-aligned so the
      digits line up with the value above regardless of the "+" prefix. */
-  .stat .drow .dv { font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+  .stat .drow .dv { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
   .stat .drow .dv.cur { color: var(--accent); }
   .stat .drow .dv.fut { color: var(--gold); }
 
@@ -401,6 +404,15 @@
     const c = euroMode() ? n * fxUsdToEur : n;
     return symOf() + numFmt(c, Math.abs(c) >= 100000 ? 0 : 2);
   };
+  // Format the Current/Future pair with the SAME decimal count so the digits
+  // line up by place value (decided from the larger of the two amounts).
+  const dualMoney = (a, b) => {
+    const ca = euroMode() ? a * fxUsdToEur : a;
+    const cb = euroMode() ? b * fxUsdToEur : b;
+    const d = (Math.abs(ca) >= 100000 || Math.abs(cb) >= 100000) ? 0 : 2;
+    const f = (c) => (isFinite(c) ? symOf() + numFmt(c, d) : "—");
+    return [f(ca), f(cb)];
+  };
   const pct = (n) => (isFinite(n)
     ? (n >= 0 ? "+" : "") + (state.format === "EU" ? n.toFixed(1).replace(".", ",") : n.toFixed(1)) + "%"
     : "—");
@@ -579,8 +591,8 @@
           <div class="k"${kAttr}>${label}</div>
           <div class="v ${naturalCls}" data-o="${base}">${initial}</div>
           <div class="dual" data-o="${base}Dual" hidden>
-            <div class="drow"><span class="dl">Current</span><span class="dv cur" data-o="${base}Cur"></span></div>
-            <div class="drow"><span class="dl">Future</span><span class="dv fut" data-o="${base}Fut"></span></div>
+            <div class="drow"><span class="dl">Current position</span><span class="dv cur" data-o="${base}Cur"></span></div>
+            <div class="drow"><span class="dl">Future position</span><span class="dv fut" data-o="${base}Fut"></span></div>
           </div>
         </div>`;
   }
@@ -624,12 +636,12 @@
     single("tax", money(o.activeTax), "negv");
     single("net", money(o.activeNet), "pos");
 
-    dual("cost", money(o.totalCost), money(cm.totalCost));
-    dual("value", money(o.value), money(cm.value));
-    dual("gain", money(o.gain), money(cm.gain));
+    dual("cost", ...dualMoney(o.totalCost, cm.totalCost));
+    dual("value", ...dualMoney(o.value, cm.value));
+    dual("gain", ...dualMoney(o.gain, cm.gain));
     dual("gainpct", ownPct, futPct);
-    dual("tax", money(o.activeTax), money(cm.activeTax));
-    dual("net", money(o.activeNet), money(cm.activeNet));
+    dual("tax", ...dualMoney(o.activeTax, cm.activeTax));
+    dual("net", ...dualMoney(o.activeNet, cm.activeNet));
 
     // Tax chip label (EUR = German flat rate; USD = bracket rate for the period).
     let taxLbl;
