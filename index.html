@@ -202,6 +202,34 @@
   .stat .drow .dv.cur { color: var(--accent); }
   .stat .drow .dv.fut { color: var(--gold); }
 
+  /* Market status + auto-refresh bar */
+  .market-bar {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 11px 16px; margin-bottom: 14px; box-shadow: var(--shadow);
+  }
+  .mkt-status { display: flex; align-items: center; gap: 9px; min-width: 0; flex-wrap: wrap; }
+  .mkt-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); flex: none; }
+  .mkt-dot.open { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .mkt-dot.pre { background: #3aa0ff; box-shadow: 0 0 0 3px rgba(58,160,255,.18); }
+  .mkt-dot.post { background: var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); }
+  .mkt-dot.closed { background: var(--neg); box-shadow: 0 0 0 3px var(--neg-soft); }
+  .mkt-label { font-weight: 700; font-size: 14px; }
+  .mkt-sub { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .mkt-refresh { display: flex; align-items: center; gap: 8px; }
+  .mkt-refresh .rfr-lbl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .mkt-refresh select { width: auto; padding: 7px 10px; font-size: 13px; }
+  .rfr-count { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; min-width: 66px; }
+
+  /* Per-card live price line (under the inputs row) */
+  .live-px { font-size: 12px; font-weight: 600; color: var(--muted); margin-top: 10px; font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .live-px .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+  .live-px.up { color: var(--accent); } .live-px.up .dot { background: var(--accent); }
+  .live-px.down { color: var(--neg); } .live-px.down .dot { background: var(--neg); }
+  .live-px .sess { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+  .live-px.err { color: var(--faint); font-weight: 500; }
+  .live-px:empty { display: none; }
+
   /* Summary */
   .summary {
     margin-top: 20px; background: linear-gradient(160deg, var(--surface), var(--surface-2));
@@ -260,6 +288,7 @@
     .controls { padding: 14px; }
     .card { padding: 14px 14px 12px; padding-top: 14px; }
     .outs { grid-template-columns: 1fr 1fr; }
+    .market-bar { padding: 12px 14px; }
   }
 </style>
 </head>
@@ -278,6 +307,26 @@
       <span id="themeIcon">🌙</span><span id="themeLabel">Dark</span>
     </button>
   </header>
+
+  <div class="market-bar">
+    <div class="mkt-status">
+      <span class="mkt-dot closed" id="mktDot"></span>
+      <span class="mkt-label" id="mktLabel">—</span>
+      <span class="mkt-sub" id="mktSub"></span>
+    </div>
+    <div style="flex: 1"></div>
+    <div class="mkt-refresh">
+      <label class="rfr-lbl" for="refreshRate">Auto-refresh</label>
+      <select id="refreshRate">
+        <option value="60">60s</option>
+        <option value="30">30s</option>
+        <option value="10">10s</option>
+        <option value="5">5s</option>
+        <option value="0">Off</option>
+      </select>
+      <span class="rfr-count" id="refreshCount">—</span>
+    </div>
+  </div>
 
   <div class="controls">
     <div class="field" style="min-width: 130px;">
@@ -465,11 +514,13 @@
     currency: "USD",
     format: "US",  // "US" (1,234.56) or "EU" (1.234,56) number notation
     term: "long",  // GLOBAL holding period: "short" (< 1yr) or "long" (>= 1yr)
+    refreshRate: 10,  // live-price auto-refresh seconds (0 = off)
     holdings: [newHolding({ ticker: "", shares: "", cost: "", target: "" })],
   };
   if (state.term !== "short" && state.term !== "long") state.term = "long";
   if (state.currency !== "EUR" && state.currency !== "USD") state.currency = "USD";
   if (state.format !== "EU" && state.format !== "US") state.format = "US";
+  if (![60, 30, 10, 5, 0].includes(state.refreshRate)) state.refreshRate = 10;
   let uid = Math.max(0, ...state.holdings.map((h) => h.id)) + 1;
 
   function newHolding(p) { return { id: p.id ?? 0, ticker: p.ticker ?? "", shares: p.shares ?? "", cost: p.cost ?? "", target: p.target ?? "", term: p.term ?? "long", buyPrice: p.buyPrice ?? "", buyQty: p.buyQty ?? "", addOn: p.addOn ?? false }; }
@@ -558,6 +609,7 @@
           <input type="text" inputmode="decimal" autocomplete="off" data-f="target" placeholder="${decPlaceholder()}" value="${esc(h.target)}"></div>
         <button class="icon-btn" data-act="remove" title="Remove">✕</button>
       </div>
+      <div class="live-px" data-o="livepx"></div>
       <button type="button" class="add-toggle" data-act="toggleAdd" aria-pressed="${h.addOn ? "true" : "false"}">
         <span class="sw"></span><span>Add shares calculator</span>
       </button>
@@ -694,6 +746,7 @@
     const f = e.target.dataset.f; if (!f) return;
     h[f] = e.target.value;
     recompute();
+    if (f === "ticker") { renderLivePx(); scheduleFetch(); }
   });
   holdingsEl.addEventListener("click", (e) => {
     const card = e.target.closest(".card"); if (!card) return;
@@ -702,7 +755,7 @@
     if (act === "remove") {
       state.holdings = state.holdings.filter((x) => x.id != h.id);
       if (state.holdings.length === 0) state.holdings.push(newHolding({ id: uid++ }));
-      renderRows(); recompute(); return;
+      renderRows(); recompute(); renderLivePx(); scheduleFetch(); return;
     }
     if (act === "toggleAdd") {
       h.addOn = !h.addOn;
@@ -714,14 +767,14 @@
   });
   $("addBtn").addEventListener("click", () => {
     state.holdings.push(newHolding({ id: uid++ }));
-    renderRows(); recompute();
+    renderRows(); recompute(); renderLivePx();
     const last = holdingsEl.lastElementChild?.querySelector(".ticker-input");
     if (last) last.focus();
   });
   $("resetBtn").addEventListener("click", () => {
     if (!confirm("Clear all stocks and start over?")) return;
     state.holdings = [newHolding({ id: uid++ })];
-    renderRows(); recompute();
+    renderRows(); recompute(); renderLivePx();
   });
   bracketEl.addEventListener("change", () => { state.bracket = parseInt(bracketEl.value, 10); recompute(); });
 
@@ -756,7 +809,7 @@
     setTermUI();
   }
   currencyEl.addEventListener("change", () => {
-    state.currency = currencyEl.value; applyModeUI(); recompute();
+    state.currency = currencyEl.value; applyModeUI(); recompute(); renderLivePx();
   });
   // Swap comma <-> period in every numeric input so a value already typed in
   // one notation is re-displayed in the other (1,234.56 <-> 1.234,56). It's a
@@ -784,7 +837,213 @@
     if (state.format !== prev) reformatHoldingInputs();
     refreshDecPlaceholders();
     applyModeUI(); recompute();
+    renderLivePx();
   });
+
+  // ================= Live prices + US market clock =================
+  // The quote proxy is YOUR Cloudflare Worker (see /worker). Set it once via:
+  //   localStorage.setItem('stonks_quote_proxy','https://...workers.dev'); location.reload();
+  // or hard-code the URL in the string below. Until set, the market clock still
+  // runs and prices can be typed by hand.
+  const QUOTE_PROXY = localStorage.getItem("stonks_quote_proxy") || "";
+
+  // ---- US market sessions (computed locally in America/New_York) ----
+  // pre 04:00–09:30 · regular 09:30–16:00 · post 16:00–20:00 ET.
+  const MKT_HOLIDAYS = { // full-day NYSE/Nasdaq closures
+    "2026-01-01": "New Year's Day", "2026-01-19": "MLK Day", "2026-02-16": "Presidents' Day",
+    "2026-04-03": "Good Friday", "2026-05-25": "Memorial Day", "2026-06-19": "Juneteenth",
+    "2026-07-03": "Independence Day", "2026-09-07": "Labor Day", "2026-11-26": "Thanksgiving",
+    "2026-12-25": "Christmas", "2027-01-01": "New Year's Day", "2027-01-18": "MLK Day",
+  };
+  const MKT_HALFDAYS = { "2026-11-27": "Day after Thanksgiving", "2026-12-24": "Christmas Eve" }; // early close 13:00 ET
+
+  function etParts(d) {
+    const f = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York", hourCycle: "h23",
+      year: "numeric", month: "2-digit", day: "2-digit", weekday: "short",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+    });
+    const p = {}; for (const part of f.formatToParts(d)) p[part.type] = part.value;
+    const wd = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[p.weekday];
+    return { ymd: `${p.year}-${p.month}-${p.day}`, weekday: wd, minutes: +p.hour * 60 + +p.minute };
+  }
+  // Minutes ET is behind UTC at instant d (300 EST / 240 EDT).
+  function etOffsetMin(d) {
+    const et = new Date(d.toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const utc = new Date(d.toLocaleString("en-US", { timeZone: "UTC" }));
+    return Math.round((utc - et) / 60000);
+  }
+  // Epoch (ms) for a given ET wall-clock date (YYYY-MM-DD) + minutes-past-midnight.
+  function etEpoch(ymd, mins) {
+    const [y, mo, da] = ymd.split("-").map(Number);
+    const utcGuess = Date.UTC(y, mo - 1, da, Math.floor(mins / 60), mins % 60, 0);
+    let off = etOffsetMin(new Date(utcGuess));
+    let epoch = utcGuess + off * 60000;
+    const off2 = etOffsetMin(new Date(epoch));
+    if (off2 !== off) epoch = utcGuess + off2 * 60000; // DST-edge correction
+    return epoch;
+  }
+  const isTradingDay = (ymd, wd) => wd >= 1 && wd <= 5 && !MKT_HOLIDAYS[ymd];
+  function sessionTimes(ymd) {
+    const half = MKT_HALFDAYS[ymd];
+    return { preStart: 240, regStart: 570, regEnd: half ? 780 : 960, postEnd: half ? 1020 : 1200 };
+  }
+  function marketStatus(now) {
+    const p = etParts(now);
+    if (!isTradingDay(p.ymd, p.weekday)) {
+      const reason = (p.weekday === 0 || p.weekday === 6) ? "Weekend" : (MKT_HOLIDAYS[p.ymd] || "Holiday");
+      return { state: "CLOSED", reason, ymd: p.ymd, minutes: p.minutes };
+    }
+    const s = sessionTimes(p.ymd), m = p.minutes;
+    let state = "CLOSED", reason = "Closed";
+    if (m < s.preStart) { state = "CLOSED"; reason = "Overnight"; }
+    else if (m < s.regStart) { state = "PRE"; reason = ""; }
+    else if (m < s.regEnd) { state = "REGULAR"; reason = ""; }
+    else if (m < s.postEnd) { state = "POST"; reason = ""; }
+    else { state = "CLOSED"; reason = "Closed"; }
+    return { state, reason, ymd: p.ymd, minutes: m };
+  }
+  function nextRegularOpen(now) {
+    for (let i = 0; i < 12; i++) {
+      const p = etParts(new Date(now.getTime() + i * 86400000));
+      if (isTradingDay(p.ymd, p.weekday)) {
+        const open = etEpoch(p.ymd, 570);
+        if (open > now.getTime()) return open;
+      }
+    }
+    return null;
+  }
+  function fmtCountdown(ms) {
+    let s = Math.max(0, Math.floor(ms / 1000));
+    const d = Math.floor(s / 86400); s -= d * 86400;
+    const h = Math.floor(s / 3600); s -= h * 3600;
+    const m = Math.floor(s / 60); s -= m * 60;
+    const out = [];
+    if (d) out.push(d + "d");
+    if (h || d) out.push(h + "h");
+    if (m || h || d) out.push(m + "m");
+    out.push(s + "s");
+    return out.join(" ");
+  }
+  const SESSION_LABEL = { REGULAR: "Open", PRE: "Pre-market", POST: "After-hours", CLOSED: "Closed" };
+  const DOT_CLASS = { REGULAR: "open", PRE: "pre", POST: "post", CLOSED: "closed" };
+  const isLiveSession = (st) => st === "PRE" || st === "REGULAR" || st === "POST";
+
+  function updateMarketBar(now) {
+    const st = marketStatus(now);
+    $("mktDot").className = "mkt-dot " + DOT_CLASS[st.state];
+    $("mktLabel").textContent = "Market " + (st.state === "REGULAR" ? "open" : st.state === "CLOSED" ? "closed" : SESSION_LABEL[st.state].toLowerCase());
+    let sub = "";
+    if (st.state === "CLOSED") {
+      const open = nextRegularOpen(now);
+      const tag = (st.reason && st.reason !== "Closed") ? `(${st.reason}) · ` : "";
+      sub = tag + (open ? "opens in " + fmtCountdown(open - now.getTime()) : "");
+    } else if (st.state === "PRE") {
+      sub = "regular open in " + fmtCountdown(etEpoch(st.ymd, 570) - now.getTime());
+    } else if (st.state === "REGULAR") {
+      sub = "closes in " + fmtCountdown(etEpoch(st.ymd, sessionTimes(st.ymd).regEnd) - now.getTime());
+    } else if (st.state === "POST") {
+      sub = "after-hours ends in " + fmtCountdown(etEpoch(st.ymd, sessionTimes(st.ymd).postEnd) - now.getTime());
+    }
+    $("mktSub").textContent = sub;
+    return st;
+  }
+
+  // ---- quote fetching + autofill ----
+  let liveLast = {};   // SYMBOL -> { price, previousClose, currency, error }
+  const tickerList = () =>
+    [...new Set(state.holdings.map((h) => (h.ticker || "").trim().toUpperCase()).filter(Boolean))];
+  const priceToInput = (n) => (state.format === "EU" ? n.toFixed(2).replace(".", ",") : n.toFixed(2));
+
+  let fetchInFlight = false;
+  async function fetchPrices() {
+    const syms = tickerList();
+    if (!syms.length || !QUOTE_PROXY || fetchInFlight || state.refreshRate === 0) return; // Off = manual
+    fetchInFlight = true;
+    try {
+      const r = await fetch(QUOTE_PROXY + "?symbols=" + encodeURIComponent(syms.join(",")), { cache: "no-store" });
+      if (r.ok) {
+        const data = await r.json();
+        (data.quotes || []).forEach((qd) => { if (qd && qd.symbol) liveLast[qd.symbol] = qd; });
+        applyLivePrices();
+      }
+    } catch { /* offline / proxy down: keep last */ }
+    finally { fetchInFlight = false; }
+  }
+  // Push the latest price into each holding's "current trading price" box.
+  function applyLivePrices() {
+    state.holdings.forEach((h) => {
+      const sym = (h.ticker || "").trim().toUpperCase();
+      const qd = sym && liveLast[sym];
+      if (qd && typeof qd.price === "number" && isFinite(qd.price)) {
+        const formatted = priceToInput(qd.price);
+        h.buyPrice = formatted;
+        const card = holdingsEl.querySelector(`.card[data-id="${h.id}"]`);
+        const inp = card && card.querySelector('input[data-f="buyPrice"]');
+        if (inp && inp !== document.activeElement) inp.value = formatted; // don't fight active typing
+      }
+    });
+    recompute();      // cost-to-buy + dual figures reflect the live price
+    renderLivePx();
+  }
+  function renderLivePx() {
+    const sess = marketStatus(new Date()).state;
+    const sessTag = sess === "REGULAR" ? "" : SESSION_LABEL[sess];
+    state.holdings.forEach((h) => {
+      const card = holdingsEl.querySelector(`.card[data-id="${h.id}"]`);
+      if (!card) return;
+      const el = card.querySelector('[data-o="livepx"]');
+      if (!el) return;
+      const sym = (h.ticker || "").trim().toUpperCase();
+      const qd = sym && liveLast[sym];
+      if (!sym || !qd) { el.className = "live-px"; el.textContent = ""; return; }
+      if (qd.error || typeof qd.price !== "number") { el.className = "live-px err"; el.textContent = "price unavailable"; return; }
+      let cls = "live-px", chg = "";
+      const prev = qd.previousClose;
+      if (typeof prev === "number" && prev > 0) {
+        const diff = qd.price - prev;
+        cls += diff >= 0 ? " up" : " down";
+        chg = `${diff >= 0 ? "▲" : "▼"} ${money(Math.abs(diff))} (${pct(diff / prev * 100)})`;
+      }
+      el.className = cls;
+      el.innerHTML = `<span class="dot"></span>${money(qd.price)} ${chg}` +
+        (sessTag ? ` <span class="sess">${sessTag}</span>` : "");
+    });
+  }
+
+  // Debounced fetch when tickers change.
+  let fetchTimer = null;
+  function scheduleFetch() { clearTimeout(fetchTimer); fetchTimer = setTimeout(fetchPrices, 600); }
+
+  // ---- refresh dropdown + 1s tick ----
+  const refreshEl = $("refreshRate");
+  refreshEl.value = String(state.refreshRate);
+  let refreshLeft = state.refreshRate;
+  refreshEl.addEventListener("change", () => {
+    state.refreshRate = parseInt(refreshEl.value, 10) || 0;
+    refreshLeft = state.refreshRate;
+    save();
+    if (state.refreshRate > 0) fetchPrices();
+  });
+
+  function tick() {
+    const now = new Date();
+    const st = updateMarketBar(now);
+    const rate = state.refreshRate | 0;
+    const hasTickers = tickerList().length > 0;
+    const countEl = $("refreshCount");
+    if (rate === 0) { countEl.textContent = "off"; return; }
+    if (!hasTickers) { countEl.textContent = "—"; refreshLeft = rate; return; }
+    if (!QUOTE_PROXY) { countEl.textContent = "no proxy"; return; }
+    if (!isLiveSession(st.state)) { countEl.textContent = "paused"; refreshLeft = rate; return; } // don't poll when closed
+    refreshLeft -= 1;
+    if (refreshLeft <= 0) { fetchPrices(); refreshLeft = rate; }
+    countEl.textContent = "next in " + Math.max(0, refreshLeft) + "s";
+  }
+
+  // Test hook (harmless): lets the headless harness inject times / quotes.
+  window.__stonks = { marketStatus, nextRegularOpen, etEpoch, fmtCountdown, fetchPrices,
+    applyLivePrices, renderLivePx, _setLive: (m) => { liveLast = m; }, _quoteProxy: () => QUOTE_PROXY };
 
   // ---- charts ----
   let barChart, pieChart;
@@ -869,6 +1128,12 @@
   initCharts();
   recompute();
   loadFx();
+
+  // ---- live prices + market clock ----
+  updateMarketBar(new Date());
+  renderLivePx();
+  setInterval(tick, 1000);
+  fetchPrices();   // initial one-shot (no-op if no proxy / Off / no tickers)
 })();
 </script>
 </body>
