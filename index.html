@@ -159,12 +159,38 @@
   .tax-box .grid2 small { color: var(--muted); display: block; font-size: 10.5px; }
   .tax-box .grid2 b { font-size: 14.5px; font-weight: 700; }
 
-  /* Per-card "buy more shares" what-if block */
-  .buy-more { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--border-strong); }
-  .buy-more-head { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 12px; }
-  .buy-more-head b { color: var(--accent); font-weight: 700; text-transform: none; letter-spacing: 0; }
-  .bm-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 440px; }
-  .bm-outs { margin-top: 12px; }
+  /* Add-shares calculator — collapsible toggle, folded into the card (no divider) */
+  .add-toggle {
+    display: inline-flex; align-items: center; gap: 9px; cursor: pointer; padding: 0;
+    background: transparent; border: 0; color: var(--muted); font-family: inherit;
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin: 16px 0 0;
+  }
+  .add-toggle .sw {
+    width: 34px; height: 19px; border-radius: 999px; background: var(--surface-2); flex: none;
+    border: 1px solid var(--border-strong); position: relative; transition: background .15s, border-color .15s;
+  }
+  .add-toggle .sw::after {
+    content: ""; position: absolute; top: 1px; left: 1px; width: 15px; height: 15px;
+    border-radius: 50%; background: var(--faint); transition: transform .15s, background .15s;
+  }
+  .add-toggle[aria-pressed="true"] { color: var(--accent); }
+  .add-toggle[aria-pressed="true"] .sw { background: var(--accent-soft); border-color: var(--accent); }
+  .add-toggle[aria-pressed="true"] .sw::after { transform: translateX(15px); background: var(--accent); }
+  .add-panel { margin-top: 12px; }
+  .add-inputs { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; max-width: 580px; }
+  .add-spend { background: var(--surface-2); border: 1px solid var(--accent); border-radius: 11px; padding: 9px 13px; min-width: 140px; box-shadow: 0 0 0 3px var(--accent-soft); }
+  .add-spend .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+  .add-spend .v { font-size: 16px; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
+
+  /* Dual own-vs-buy values inside each output chip */
+  .stat .v.added { font-size: 15px; margin-top: 3px; color: var(--accent); }
+  .stat .v.own-val { color: var(--muted) !important; }
+  .add-legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 12px; font-size: 12px; color: var(--muted); }
+  .add-legend .lg { display: inline-flex; align-items: center; gap: 7px; }
+  .add-legend i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
+  .add-legend .own i { background: var(--muted); }
+  .add-legend .buy i { background: var(--accent); }
+  .add-legend b { color: var(--text); }
 
   /* Summary */
   .summary {
@@ -213,6 +239,10 @@
     .card .inputs .icon-btn {
       position: absolute; top: 14px; right: 14px; width: 36px; height: 36px;
     }
+
+    /* Add-shares inputs: two boxes on top, the spend read-out spans below. */
+    .add-inputs { grid-template-columns: 1fr 1fr; }
+    .add-spend { grid-column: 1 / -1; }
   }
 
   @media (max-width: 420px) {
@@ -376,6 +406,8 @@
   function rebuildFmt() {}  // no-op (call-site compat)
   // Placeholder decimal sample that matches the selected notation (0,00 / 0.00).
   const decPlaceholder = () => (state.format === "EU" ? "0,00" : "0.00");
+  // Share counts: grouped per notation, trailing zeros trimmed (supports fractional shares).
+  const sharesFmt = (n) => new Intl.NumberFormat(notationLoc(), { maximumFractionDigits: 4 }).format(n);
 
   // Parse a number per the selected NOTATION:
   //   EU: comma = decimal, period/space = thousands ("1.234,56" -> 1234.56)
@@ -423,7 +455,7 @@
   if (state.format !== "EU" && state.format !== "US") state.format = "US";
   let uid = Math.max(0, ...state.holdings.map((h) => h.id)) + 1;
 
-  function newHolding(p) { return { id: p.id ?? 0, ticker: p.ticker ?? "", shares: p.shares ?? "", cost: p.cost ?? "", target: p.target ?? "", term: p.term ?? "long", buyPrice: p.buyPrice ?? "", buyQty: p.buyQty ?? "" }; }
+  function newHolding(p) { return { id: p.id ?? 0, ticker: p.ticker ?? "", shares: p.shares ?? "", cost: p.cost ?? "", target: p.target ?? "", term: p.term ?? "long", buyPrice: p.buyPrice ?? "", buyQty: p.buyQty ?? "", addOn: p.addOn ?? false }; }
   function load() { try { const r = localStorage.getItem(LS); return r ? JSON.parse(r) : null; } catch { return null; } }
   function save() { try { localStorage.setItem(LS, JSON.stringify(state)); } catch {} }
 
@@ -449,35 +481,41 @@
   });
 
   // ---- compute one holding ----
+  // Returns the OWN-only figures at top level (spread, so the summary + the
+  // "current" line use your real holdings) plus a `.combined` sub-result that
+  // folds in the extra shares (buyQty bought now at buyPrice) for the
+  // "if you buy more" line, and `.spend` = what those extra shares cost.
   function compute(h) {
-    const shares = parseNum(h.shares);
+    const ownShares = parseNum(h.shares);
     const cost = parseNum(h.cost);
     const target = parseNum(h.target);
-    const isEUR = euroMode();
-    const b = BRACKETS[state.bracket] || BRACKETS[DEFAULT_BRACKET];
-    const totalCost = shares * cost;
-    const value = shares * target;
-    const gain = value - totalCost;
-    const taxable = Math.max(0, gain);
-    // EUR mode = German flat Abgeltungsteuer (holding period irrelevant).
-    const stTax = isEUR ? taxable * GERMAN_RATE : taxable * b.rate;
-    const ltTax = isEUR ? taxable * GERMAN_RATE : taxable * b.lt;
-
-    // "Buy more shares" what-if: extra shares bought now at the current price.
     const buyPrice = parseNum(h.buyPrice);
     const buyQty = parseNum(h.buyQty);
-    const buyCost = buyPrice * buyQty;          // cost to acquire them today
-    const newValue = buyQty * target;           // those new shares' worth at target
-    const newGain = newValue - buyCost;         // gain on just the new shares
-    const combinedGain = (shares + buyQty) * target - (totalCost + buyCost); // whole position
+    const isEUR = euroMode();
+    const b = BRACKETS[state.bracket] || BRACKETS[DEFAULT_BRACKET];
+
+    // One scenario (a share count + its cost basis) -> all derived figures.
+    const scenario = (shares, totalCost) => {
+      const value = shares * target;
+      const gain = value - totalCost;
+      const taxable = Math.max(0, gain);
+      const stTax = isEUR ? taxable * GERMAN_RATE : taxable * b.rate;
+      const ltTax = isEUR ? taxable * GERMAN_RATE : taxable * b.lt;
+      return {
+        shares, totalCost, value, gain,
+        gainPct: totalCost > 0 ? (gain / totalCost) * 100 : 0,
+        activeTax: state.term === "short" ? stTax : ltTax,
+        activeNet: state.term === "short" ? value - stTax : value - ltTax,
+      };
+    };
+
+    const own = scenario(ownShares, ownShares * cost);
+    const combined = scenario(ownShares + buyQty, ownShares * cost + buyQty * buyPrice);
 
     return {
-      shares, cost, target, totalCost, value, gain,
-      gainPct: totalCost > 0 ? (gain / totalCost) * 100 : 0,
-      stTax, ltTax, stNet: value - stTax, ltNet: value - ltTax,
-      activeTax: state.term === "short" ? stTax : ltTax,
-      activeNet: state.term === "short" ? value - stTax : value - ltTax,
-      buyPrice, buyQty, buyCost, newValue, newGain, combinedGain,
+      ...own, own, combined, cost, target, ownShares, buyQty, buyPrice,
+      spend: buyQty * buyPrice,
+      adding: !!h.addOn && buyQty > 0,   // dual display only when toggle on + shares entered
     };
   }
 
@@ -503,28 +541,29 @@
           <input type="text" inputmode="decimal" autocomplete="off" data-f="target" placeholder="${decPlaceholder()}" value="${esc(h.target)}"></div>
         <button class="icon-btn" data-act="remove" title="Remove">✕</button>
       </div>
-      <div class="outs">
-        <div class="stat"><div class="k">Cost basis</div><div class="v" data-o="cost">$0</div></div>
-        <div class="stat"><div class="k">Projected value</div><div class="v goldv" data-o="value">$0</div></div>
-        <div class="stat"><div class="k">Gain $</div><div class="v" data-o="gain">$0</div></div>
-        <div class="stat"><div class="k">Gain %</div><div class="v" data-o="gainpct">—</div></div>
-        <div class="stat"><div class="k" data-o="taxlbl">Est. tax</div><div class="v negv" data-o="tax">$0</div></div>
-        <div class="stat"><div class="k">After-tax</div><div class="v pos" data-o="net">$0</div></div>
-      </div>
-      <div class="buy-more">
-        <div class="buy-more-head">＋ What if I buy more <b>at today's price?</b></div>
-        <div class="bm-inputs">
-          <div class="field"><label>Current price / share</label>
-            <input type="text" inputmode="decimal" autocomplete="off" data-f="buyPrice" placeholder="${decPlaceholder()}" value="${esc(h.buyPrice ?? "")}"></div>
-          <div class="field"><label>Shares to buy</label>
+      <button type="button" class="add-toggle" data-act="toggleAdd" aria-pressed="${h.addOn ? "true" : "false"}">
+        <span class="sw"></span><span>Add shares calculator</span>
+      </button>
+      <div class="add-panel"${h.addOn ? "" : " hidden"}>
+        <div class="add-inputs">
+          <div class="field"><label>Shares to add</label>
             <input type="text" inputmode="decimal" autocomplete="off" data-f="buyQty" placeholder="0" value="${esc(h.buyQty ?? "")}"></div>
+          <div class="field"><label>Current trading price</label>
+            <input type="text" inputmode="decimal" autocomplete="off" data-f="buyPrice" placeholder="${decPlaceholder()}" value="${esc(h.buyPrice ?? "")}"></div>
+          <div class="add-spend"><div class="k">Cost to buy</div><div class="v negv" data-o="spend">—</div></div>
         </div>
-        <div class="outs bm-outs">
-          <div class="stat"><div class="k">Buy cost</div><div class="v negv" data-o="buycost">—</div></div>
-          <div class="stat"><div class="k">New shares @ target</div><div class="v goldv" data-o="buyval">—</div></div>
-          <div class="stat"><div class="k">Gain on new shares</div><div class="v" data-o="buygain">—</div></div>
-          <div class="stat"><div class="k">Combined gain</div><div class="v" data-o="buytot">—</div></div>
-        </div>
+      </div>
+      <div class="outs">
+        <div class="stat"><div class="k">Cost basis</div><div class="v" data-o="cost">$0</div><div class="v added" data-o="costAdd" hidden></div></div>
+        <div class="stat"><div class="k">Projected value</div><div class="v goldv" data-o="value">$0</div><div class="v added" data-o="valueAdd" hidden></div></div>
+        <div class="stat"><div class="k">Gain $</div><div class="v" data-o="gain">$0</div><div class="v added" data-o="gainAdd" hidden></div></div>
+        <div class="stat"><div class="k">Gain %</div><div class="v" data-o="gainpct">—</div><div class="v added" data-o="gainpctAdd" hidden></div></div>
+        <div class="stat"><div class="k" data-o="taxlbl">Est. tax</div><div class="v negv" data-o="tax">$0</div><div class="v added" data-o="taxAdd" hidden></div></div>
+        <div class="stat"><div class="k">After-tax</div><div class="v pos" data-o="net">$0</div><div class="v added" data-o="netAdd" hidden></div></div>
+      </div>
+      <div class="add-legend" data-o="legend" hidden>
+        <span class="lg own"><i></i> Own now (<b data-o="legOwn"></b>)</span>
+        <span class="lg buy"><i></i> If you buy more (<b data-o="legBuy"></b>)</span>
       </div>`;
     return card;
   }
@@ -534,18 +573,41 @@
   function updateRowOutputs(card, h) {
     const c = compute(h);
     const b = BRACKETS[state.bracket] || BRACKETS[DEFAULT_BRACKET];
-    const set = (o, txt, cls) => {
+    const adding = c.adding;
+
+    // Top "current" line: when adding, recolor to the neutral "own" grey;
+    // otherwise keep each chip's natural color (gold / green / red).
+    const own = (o, txt, naturalCls) => {
       const el = card.querySelector(`[data-o="${o}"]`);
       if (!el) return;
       el.textContent = txt;
-      if (cls !== undefined) { el.classList.remove("pos", "negv"); if (cls) el.classList.add(cls); }
+      el.classList.remove("pos", "negv", "goldv", "own-val");
+      if (adding) el.classList.add("own-val");
+      else if (naturalCls) el.classList.add(naturalCls);
     };
-    set("cost", money(c.totalCost));
-    set("value", money(c.value));
-    set("gain", money(c.gain), c.gain >= 0 ? "pos" : "negv");
-    set("gainpct", c.totalCost > 0 ? pct(c.gainPct) : "—", c.gain >= 0 ? "pos" : "negv");
-    // Single tax + after-tax chip. EUR = German flat rate; USD = bracket rate
-    // for the globally-selected holding period.
+    // Bottom "if you buy more" line (green): shown only when adding.
+    const add = (o, txt) => {
+      const el = card.querySelector(`[data-o="${o}"]`);
+      if (!el) return;
+      el.hidden = !adding;
+      if (adding) el.textContent = txt;
+    };
+
+    own("cost", money(c.own.totalCost), "");
+    own("value", money(c.own.value), "goldv");
+    own("gain", money(c.own.gain), c.own.gain >= 0 ? "pos" : "negv");
+    own("gainpct", c.own.totalCost > 0 ? pct(c.own.gainPct) : "—", c.own.gain >= 0 ? "pos" : "negv");
+    own("tax", money(c.own.activeTax), "negv");
+    own("net", money(c.own.activeNet), "pos");
+
+    add("costAdd", money(c.combined.totalCost));
+    add("valueAdd", money(c.combined.value));
+    add("gainAdd", money(c.combined.gain));
+    add("gainpctAdd", c.combined.totalCost > 0 ? pct(c.combined.gainPct) : "—");
+    add("taxAdd", money(c.combined.activeTax));
+    add("netAdd", money(c.combined.activeNet));
+
+    // Tax chip label (EUR = German flat rate; USD = bracket rate for the period).
     let taxLbl;
     if (euroMode()) {
       taxLbl = "Est. tax · DE 26.375%";
@@ -554,19 +616,24 @@
       const rate = isShort ? b.rate : b.lt;
       taxLbl = `Est. tax · ${isShort ? "ST" : "LT"} ${Math.round(rate * 100)}%`;
     }
-    set("taxlbl", taxLbl);
-    set("tax", money(c.activeTax));
-    set("net", money(c.activeNet));
+    const taxLblEl = card.querySelector('[data-o="taxlbl"]');
+    if (taxLblEl) taxLblEl.textContent = taxLbl;
 
-    // "Buy more shares" what-if chips (respect currency + notation via money()).
-    const hasBuy = c.buyPrice > 0 && c.buyQty > 0;
-    const hasTarget = c.target > 0;
-    set("buycost", hasBuy ? money(c.buyCost) : "—", hasBuy ? "negv" : "");
-    set("buyval", (hasTarget && c.buyQty > 0) ? money(c.newValue) : "—");
-    set("buygain", (hasTarget && hasBuy) ? money(c.newGain) : "—",
-      (hasTarget && hasBuy) ? (c.newGain >= 0 ? "pos" : "negv") : "");
-    set("buytot", (hasTarget && c.buyQty > 0) ? money(c.combinedGain) : "—",
-      (hasTarget && c.buyQty > 0) ? (c.combinedGain >= 0 ? "pos" : "negv") : "");
+    // Spend = what the extra shares cost to buy now.
+    const spendEl = card.querySelector('[data-o="spend"]');
+    if (spendEl) spendEl.textContent = (c.buyQty > 0 && c.buyPrice > 0) ? money(c.spend) : "—";
+
+    // Color legend, shown only while the dual values are visible.
+    const leg = card.querySelector('[data-o="legend"]');
+    if (leg) {
+      leg.hidden = !adding;
+      if (adding) {
+        const lo = card.querySelector('[data-o="legOwn"]');
+        const lb = card.querySelector('[data-o="legBuy"]');
+        if (lo) lo.textContent = sharesFmt(c.ownShares) + " sh";
+        if (lb) lb.textContent = sharesFmt(c.combined.shares) + " sh";
+      }
+    }
   }
 
   function recompute() {
@@ -605,10 +672,18 @@
   holdingsEl.addEventListener("click", (e) => {
     const card = e.target.closest(".card"); if (!card) return;
     const h = state.holdings.find((x) => x.id == card.dataset.id); if (!h) return;
-    if (e.target.dataset.act === "remove") {
+    const actEl = e.target.closest("[data-act]"); const act = actEl && actEl.dataset.act;
+    if (act === "remove") {
       state.holdings = state.holdings.filter((x) => x.id != h.id);
       if (state.holdings.length === 0) state.holdings.push(newHolding({ id: uid++ }));
       renderRows(); recompute(); return;
+    }
+    if (act === "toggleAdd") {
+      h.addOn = !h.addOn;
+      actEl.setAttribute("aria-pressed", h.addOn ? "true" : "false");
+      const panel = card.querySelector(".add-panel");
+      if (panel) panel.hidden = !h.addOn;
+      recompute(); save(); return;
     }
   });
   $("addBtn").addEventListener("click", () => {
