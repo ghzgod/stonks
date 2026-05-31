@@ -160,8 +160,11 @@
   .tax-box .grid2 b { font-size: 14.5px; font-weight: 700; }
 
   /* Add-shares calculator — sits BELOW the output boxes. The toggle stays put;
-     the inputs slide out to its right when opened (nothing below them to push). */
-  .add-row { display: flex; align-items: center; gap: 16px; margin-top: 14px; }
+     the inputs slide out to its right when opened (nothing below them to push).
+     flex-end + margin lines the toggle up with the centre of the input BOXES
+     (not the label+box field), when open. */
+  .add-row { display: flex; align-items: flex-end; gap: 16px; margin-top: 14px; }
+  .add-row.open .add-toggle { margin-bottom: 10px; }
   .add-toggle {
     display: inline-flex; align-items: center; gap: 9px; cursor: pointer; padding: 0; flex: none;
     background: transparent; border: 0; color: var(--muted); font-family: inherit; white-space: nowrap;
@@ -259,6 +262,7 @@
     /* No room to slide sideways on a phone: stack the toggle over the inputs
        and reveal them below (it pushes down here, but the viewport demands it). */
     .add-row { flex-direction: column; align-items: stretch; gap: 12px; }
+    .add-row.open .add-toggle { margin-bottom: 0; }
     .add-slide { overflow: visible; opacity: 1; max-width: none; max-height: none; }
     .add-row:not(.open) .add-slide { display: none; }
     .add-inputs { width: auto; grid-template-columns: 1fr 1fr; }
